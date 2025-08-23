@@ -10,6 +10,7 @@ import os, sys
 import pandas as pd
 import numpy as np
 import pymongo
+from pymongo import MongoClient
 from sklearn.model_selection import train_test_split
 
 from dotenv import load_dotenv
@@ -34,9 +35,9 @@ class DataIngestion:
             collection_name=self.data_ingestion_config.collection_name
             self.mongo_client=pymongo.MongoClient(MONGO_DB_URL)
             collection=self.mongo_client[database_name][collection_name]
-
-            df=pd.DataFrame(list(collection.find()))
-            if "_id" in df.columns.to_list():
+            
+            df= pd.DataFrame(list(collection.find()))
+            if not df.empty and "_id" in df.columns.to_list():
                 df=df.drop(columns=["_id"], axis=1)
 
             df.replace({"na":np.nan},inplace=True)
@@ -44,7 +45,7 @@ class DataIngestion:
 
 
         except Exception as e:
-            raise NetworkSecurityException(e,sys)
+            raise NetworkSecurityException(str(e),sys)
     
     def export_data_into_feature_store(self,dataframe: pd.DataFrame):
         try:
