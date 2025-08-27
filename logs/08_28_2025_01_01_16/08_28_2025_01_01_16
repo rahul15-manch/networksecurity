@@ -1,0 +1,23 @@
+2025-08-28 01:01:21,273 - root - INFO - Initiate the data ingestion 
+2025-08-28 01:01:25,387 - root - INFO -  Performed train test Split on the dataframe
+2025-08-28 01:01:25,387 - root - INFO -  Exited split_data_as_train_test method of the data ingestion class
+2025-08-28 01:01:25,387 - root - INFO - Exporting train data and test file path 
+2025-08-28 01:01:25,409 - root - INFO - Exported train data and test file path 
+2025-08-28 01:01:25,409 - root - INFO - Data ingestion is completed
+2025-08-28 01:01:25,411 - root - INFO - Initiate the data validation 
+2025-08-28 01:01:25,418 - root - INFO -  Required number of columns: 2
+2025-08-28 01:01:25,418 - root - INFO - Data frame has columns: 31
+2025-08-28 01:01:25,474 - root - INFO -  Data validation Completed
+2025-08-28 01:01:25,474 - root - INFO - Data transformation Started
+2025-08-28 01:01:25,474 - root - INFO - Entered initiate_data_transformation method of DataTransformation class
+2025-08-28 01:01:25,474 - root - INFO - Starting data transformation...
+2025-08-28 01:01:25,481 - root - INFO - Creating a data transformer object for data transformation class
+2025-08-28 01:01:25,481 - root - INFO -  Initialize KNNImputer with {'missing_values': nan, 'n_neighbors': 3, 'weights': 'uniform'} 
+2025-08-28 01:01:25,484 - root - INFO - Entered save_object method od mainUtils class 
+2025-08-28 01:01:25,485 - root - INFO - Exited the save_object method od mainUtils class 
+2025-08-28 01:01:25,485 - root - INFO -  Data Transformation Completed 
+2025-08-28 01:01:25,485 - root - INFO - Model Training Started
+2025-08-28 01:03:14,814 - root - INFO - Entered save_object method od mainUtils class 
+2025-08-28 01:03:14,825 - root - INFO - Exited the save_object method od mainUtils class 
+2025-08-28 01:03:14,825 - root - INFO - Model trainer artifact:ModelTrainerArtifact(trained_model_file_path='Artifacts/ 08_28_2025_01_01_18/model_trainer/Trained_model/model.pkl', train_metric_artifact=ClassificationMetricArtifact(f1_score=0.991096721974909, precision_score=0.9886960032297134, recall_score=0.9935091277890467), test_metric_artifact=ClassificationMetricArtifact(f1_score=0.9736735520453625, precision_score=0.9677938808373591, recall_score=0.9796251018744906))
+2025-08-28 01:03:14,827 - root - INFO - Model Training Completed

@@ -1,0 +1,10 @@
+artifact_location: file:///Users/rahulmanchanda/Desktop/Network%20Security/mlruns/0/models/m-5ca41f86ae1d4a79a36fdf73950aeb7e/artifacts
+creation_timestamp: 1756323193710
+experiment_id: '0'
+last_updated_timestamp: 1756323194809
+model_id: m-5ca41f86ae1d4a79a36fdf73950aeb7e
+model_type: null
+name: model
+source_run_id: a2e81f2fee5b41d7ae476b3d84af673c
+status: 2
+status_message: null

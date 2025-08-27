@@ -10,4 +10,5 @@ pymongo[srv]
 dill
 scikit-learn
 pyaml
+mlflow
 ##-e .
