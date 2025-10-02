@@ -11,4 +11,6 @@ dill
 scikit-learn
 pyaml
 mlflow
+dagshub
+
 ##-e .
