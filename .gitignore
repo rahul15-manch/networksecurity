@@ -1,2 +1,33 @@
-venv
+# Environment and Secrets
+venv/
 .env
+.env.*
+*.env
+
+# Python Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Logs and Runtime Artifacts
+logs/
+Artifacts/
+final_model/
+mlruns/
+*.log
+
+# Serialized Model Artifacts
+*.pkl
+*.npy
+
+# OS and IDE Metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Packaging and Build
+build/
+dist/
+*.egg-info/
