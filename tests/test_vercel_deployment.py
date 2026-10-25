@@ -34,12 +34,22 @@ class TestVercelDeploymentCompatibility(unittest.TestCase):
             py_ver = f.read().strip()
         self.assertEqual(py_ver, "3.12", "Python version must be pinned to 3.12 for prebuilt binary wheels")
 
+        # Check pyproject.toml requires-python
+        pyproject_path = os.path.join(root_dir, "pyproject.toml")
+        self.assertTrue(os.path.exists(pyproject_path), "pyproject.toml must exist")
+        with open(pyproject_path, "r") as f:
+            pyproject_content = f.read()
+        self.assertIn('<3.13', pyproject_content, "requires-python must permit Python 3.12 releases (<3.13)")
+
+        # Check uv.lock
+        uv_lock_path = os.path.join(root_dir, "uv.lock")
+        self.assertTrue(os.path.exists(uv_lock_path), "uv.lock must exist")
+
         # Check api/requirements.txt
         req_path = os.path.join(root_dir, "api", "requirements.txt")
         self.assertTrue(os.path.exists(req_path), "api/requirements.txt must exist")
         with open(req_path, "r") as f:
             req_content = f.read()
-        self.assertIn("--only-binary", req_content)
         self.assertIn("scipy==1.15.3", req_content)
         self.assertIn("scikit-learn==1.7.2", req_content)
         self.assertNotIn("mlflow", req_content, "Heavy MLFlow must NOT be in serverless requirements")

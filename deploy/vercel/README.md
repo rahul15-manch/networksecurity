@@ -98,20 +98,20 @@ Vercel will package the Python function using Fluid Compute, accepting the 283.0
 
 ---
 
-### SciPy Prebuilt Wheel Resolution (Fixing Fortran Compiler Build Errors)
+### SciPy Prebuilt Wheel Resolution (Fixing "No Usable Wheels" & Fortran Errors)
 
 If a deployment fails during package installation with:
-`uv pip install fails while building SciPy 1.15.3 because Fortran compilers are unavailable (nvfortran, pgfortran, ifort, ifx, g95)`
+`scipy==1.15.3 has no usable wheels. Wheels are required because building from source is disabled (--no-build).`
 
 **Root Cause:**
-- Without an explicit Python version file, Vercel defaults to **Python 3.14**.
-- SciPy 1.15.3 (along with many scientific libraries) publishes precompiled binary wheels on PyPI up to Python 3.13 (`cp310`, `cp311`, `cp312`, `cp313`). No `cp314` wheel is available for version 1.15.3.
-- When `uv` encounters a package without a matching wheel, it falls back to downloading the source distribution (`scipy-1.15.3.tar.gz`) and compiling via Meson, which requires a Fortran compiler that does not exist in standard serverless containers.
+- Without an explicit Python version file, Vercel defaults to **Python 3.14**, where SciPy 1.15.3 has no precompiled wheels.
+- When configuring `pyproject.toml`, specifying `requires-python = "<=3.12"` is parsed under PEP 440 as strictly `<= 3.12.0`. Because Vercel's managed Python 3.12 interpreter is `3.12.x` (e.g., `3.12.15`), `uv` flags the version as incompatible and falls back to default Python 3.14.
+- On Python 3.14, no `cp314` wheels exist for SciPy 1.15.3, causing `uv` to fail with `no usable wheels`.
 
 **Applied Fix:**
-1. **Pinned Python Runtime ([.python-version](../../.python-version)):** Configured `.python-version` with `3.12`. Vercel automatically routes the Python runtime to Python 3.12.
-2. **`pyproject.toml` Definition:** Added `pyproject.toml` specifying `requires-python = ">=3.10, <=3.12"`.
-3. **Binary-Only Guardrail:** Added `--only-binary :all:` to [requirements.txt](../../requirements.txt) and [api/requirements.txt](../../api/requirements.txt). This forces `uv` and `pip` to install official precompiled `manylinux_2_17_x86_64` wheels directly from PyPI (installing in ~1.5s with zero local compilation).
+1. **Pinned Python Runtime ([.python-version](../../.python-version)):** Configured `.python-version` with `3.12` in root and `api/`.
+2. **Proper PEP 440 Range ([pyproject.toml](../../pyproject.toml)):** Updated `requires-python = ">=3.10, <3.13"` to cleanly match all Python 3.12 minor releases.
+3. **Deterministic Lockfile ([uv.lock](../../uv.lock)):** Generated and committed a validated `uv.lock` locking `scipy==1.15.3` and all production dependencies directly to their official `manylinux_2_17_x86_64` wheels with SHA-256 integrity hashes.
 
 ---
 
