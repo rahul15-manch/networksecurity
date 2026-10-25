@@ -1,0 +1,43 @@
+[Unit]
+Description=PhishGuard Real-Time Phishing Detection FastAPI Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/networksecurity
+Environment="PATH=/home/ubuntu/networksecurity/venv/bin:/usr/local/bin:/usr/bin"
+EnvironmentFile=-/home/ubuntu/networksecurity/.env
+
+# Production Gunicorn master process with 4 async Uvicorn workers
+ExecStart=/home/ubuntu/networksecurity/venv/bin/gunicorn app:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --timeout 60 \
+    --graceful-timeout 30 \
+    --keep-alive 5 \
+    --access-logfile /var/log/phishguard/access.log \
+    --error-logfile /var/log/phishguard/error.log \
+    --capture-output
+
+# Process Lifecycle and Failure Recovery
+Restart=always
+RestartSec=5s
+KillSignal=SIGQUIT
+TimeoutStopSec=30s
+
+# Security and Isolation Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
