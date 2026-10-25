@@ -1,4 +1,4 @@
-import type { HealthResponse, PhishingFeatures, PredictionResponse } from '../types';
+import type { HealthResponse, PhishingFeatures, PredictionResponse, URLPredictionRequest, URLPredictionResponse } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
 
@@ -111,6 +111,60 @@ export async function predictPhishing(features: PhishingFeatures): Promise<Predi
     if (err instanceof ApiError) throw err;
     throw new ApiError(
       'Network communication failure: unable to reach the prediction endpoint.',
+      0,
+      err.message
+    );
+  }
+}
+
+/**
+ * Submits a target URL to the backend for automated feature extraction and inference.
+ */
+export async function predictURL(request: URLPredictionRequest): Promise<URLPredictionResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/predict-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        url: request.url,
+        allow_heuristics: request.allow_heuristics ?? true,
+        fetch_network: request.fetch_network ?? true,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `URL analysis failed (HTTP ${response.status})`;
+      let errorDetail: any = null;
+      try {
+        errorDetail = await response.json();
+        if (typeof errorDetail?.detail === 'string') {
+          errorMessage = errorDetail.detail;
+        } else if (Array.isArray(errorDetail?.detail)) {
+          const firstErr = errorDetail.detail[0];
+          errorMessage = `Validation error: ${firstErr.msg}`;
+        }
+      } catch {
+        // Non-JSON response
+      }
+
+      if (response.status === 400 && errorMessage.toLowerCase().includes('security violation')) {
+        errorMessage = `Security Alert: ${errorMessage}`;
+      } else if (response.status === 503) {
+        errorMessage = 'Model artifact is currently unavailable on the server. Ensure model training is complete.';
+      }
+
+      throw new ApiError(errorMessage, response.status, errorDetail);
+    }
+
+    const data: URLPredictionResponse = await response.json();
+    return data;
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      'Network communication failure: unable to reach the URL prediction endpoint.',
       0,
       err.message
     );

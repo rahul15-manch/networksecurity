@@ -1,32 +1,32 @@
 # 🛡️ Network Security - Phishing Detection
 
 This project implements an end-to-end ML pipeline for detecting phishing attacks from network data. It automates data ingestion, validation, transformation, model training, and experiment tracking using MLflow, while maintaining modular code and artifacts for reproducibility.
-## 🛠️ Tech Stack  
+## 🛠️ Tech Stack
 
-### 📊 Data Processing  
-- 🐼 Pandas ![Pandas](https://img.shields.io/badge/-Pandas-150458?logo=pandas&logoColor=white)  
-- 🔢 NumPy ![NumPy](https://img.shields.io/badge/-NumPy-013243?logo=numpy&logoColor=white)  
-- 📝 PyYAML ![PyYAML](https://img.shields.io/badge/-PyYAML-yellow)  
-- 📦 Dill ![Dill](https://img.shields.io/badge/-Dill-green)  
+### 📊 Data Processing
+- 🐼 Pandas ![Pandas](https://img.shields.io/badge/-Pandas-150458?logo=pandas&logoColor=white)
+- 🔢 NumPy ![NumPy](https://img.shields.io/badge/-NumPy-013243?logo=numpy&logoColor=white)
+- 📝 PyYAML ![PyYAML](https://img.shields.io/badge/-PyYAML-yellow)
+- 📦 Dill ![Dill](https://img.shields.io/badge/-Dill-green)
 
-### 🤖 Machine Learning  
-- 🎯 Scikit-Learn ![Scikit-Learn](https://img.shields.io/badge/-Scikit--Learn-F7931E?logo=scikitlearn&logoColor=white)  
+### 🤖 Machine Learning
+- 🎯 Scikit-Learn ![Scikit-Learn](https://img.shields.io/badge/-Scikit--Learn-F7931E?logo=scikitlearn&logoColor=white)
 
-### 📈 Visualization  
-- 📊 Matplotlib ![Matplotlib](https://img.shields.io/badge/-Matplotlib-0C55A5)  
-- 🌊 Seaborn ![Seaborn](https://img.shields.io/badge/-Seaborn-268BD2)  
+### 📈 Visualization
+- 📊 Matplotlib ![Matplotlib](https://img.shields.io/badge/-Matplotlib-0C55A5)
+- 🌊 Seaborn ![Seaborn](https://img.shields.io/badge/-Seaborn-268BD2)
 
-### 🗄️ Database  
-- 🍃 MongoDB ![MongoDB](https://img.shields.io/badge/-MongoDB-47A248?logo=mongodb&logoColor=white)  
-- 🔌 PyMongo ![PyMongo](https://img.shields.io/badge/-PyMongo-47A248)  
+### 🗄️ Database
+- 🍃 MongoDB ![MongoDB](https://img.shields.io/badge/-MongoDB-47A248?logo=mongodb&logoColor=white)
+- 🔌 PyMongo ![PyMongo](https://img.shields.io/badge/-PyMongo-47A248)
 
-### ⚙️ MLOps & Tracking  
-- 📊 MLflow ![MLflow](https://img.shields.io/badge/-MLflow-0194E2?logo=mlflow&logoColor=white)  
-- 🚀 DagsHub ![DagsHub](https://img.shields.io/badge/-DagsHub-orange)  
-- 🐳 Docker ![Docker](https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white)  
+### ⚙️ MLOps & Tracking
+- 📊 MLflow ![MLflow](https://img.shields.io/badge/-MLflow-0194E2?logo=mlflow&logoColor=white)
+- 🚀 DagsHub ![DagsHub](https://img.shields.io/badge/-DagsHub-orange)
+- 🐳 Docker ![Docker](https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white)
 
-### 💻 Core  
-- 🐍 Python ![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white)  
+### 💻 Core
+- 🐍 Python ![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white)
 
 ## 🚀 Features
 
@@ -415,16 +415,133 @@ Configure the backend API URL via `VITE_API_BASE_URL`:
   ```
 
 ### 6. Key Features & Screens
-1. **Analyze Vector:**
-   - Real-time prediction card with model confidence bar ($P(\text{legitimate}|X)$).
+1. **End-to-End URL Phishing Classifier:**
+   - Real-time submission of live web URLs (`http` and `https`).
+   - Automated 4-stage feature pipeline: URL syntax & SSRF defense -> Lexical analysis -> DNS/TLS inspection -> Safe DOM attribute parsing.
+   - Dual probability bar ($P(\text{legitimate})$ vs $P(\text{phishing})$).
+   - Detailed pipeline stage breakdown (lexical count, DNS/TLS status, DOM elements parsed).
+   - Strict mode vs Documented Baseline Heuristic toggle for retired services.
+2. **Analyze Vector:**
+   - Real-time prediction card with model confidence bar.
    - Quick-load benchmark presets (Credential Harvester, Enterprise Banking Portal, Ambiguous Domain).
    - Interactive 30-feature editor grouped by category (Lexical & URL, Security & SSL, Domain & DNS, Page Content & Scripting).
    - Duplicate-submission prevention and accessible loading states.
-2. **Model Metrics:**
+3. **Model Metrics:**
    - Visual display of cross-validation F1 (95.52%), test accuracy (96.28%), test F1 (96.19%), and ROC-AUC (99.41%).
    - Candidate model comparison matrix (Random Forest vs Gradient Boosting, Decision Tree, Logistic Regression, AdaBoost).
-3. **Pipeline & Limits:**
-   - 4-stage pipeline visualization and transparent limitation boundaries (no raw URL scraping, no SSRF network requests).
+4. **Pipeline & Limits:**
+   - 4-stage pipeline visualization and transparent security boundaries.
+
+---
+
+## 🌐 End-to-End URL Feature Extraction & Safety Architecture
+
+The URL feature extraction engine (`networksecurity/components/url_feature_extractor.py`) bridges raw user URLs and the 30-feature trained Random Forest classifier.
+
+### Feature Capability Map (30 Features)
+
+| Feature Name | Category | Extraction Source | Reliability | Domain & Heuristic Fallback |
+| :--- | :--- | :--- | :--- | :--- |
+| `having_IP_Address` | Lexical | Hostname parsing (IPv4/IPv6/hex) | High | `{-1, 1}`: -1 if IP, 1 if domain |
+| `URL_Length` | Lexical | URL character length | High | `{-1, 0, 1}`: 1 if <54, 0 if 54-75, -1 if >75 |
+| `Shortining_Service` | Lexical | Known shortener registry (bit.ly, etc.) | High | `{-1, 1}`: -1 if shortener, 1 if direct |
+| `having_At_Symbol` | Lexical | String search for `@` | High | `{-1, 1}`: -1 if `@` present, 1 if clean |
+| `double_slash_redirecting` | Lexical | Path search for `//` after proto | High | `{-1, 1}`: -1 if `//` in path, 1 if clean |
+| `Prefix_Suffix` | Lexical | Hyphen `-` search in domain labels | High | `{-1, 1}`: -1 if `-` present, 1 if clean |
+| `having_Sub_Domain` | Lexical | Domain label dots count (minus www) | High | `{-1, 0, 1}`: 1 if <=1, 0 if 2, -1 if >2 |
+| `SSLfinal_State` | DNS/TLS | TLS certificate chain & validity | High | `{-1, 0, 1}`: 1 if trusted >=1yr, 0 if untrusted, -1 if HTTP/err |
+| `Domain_registeration_length`| External | WHOIS validity period | Retired/Commercial | `{-1, 1}`: Fallback -1 (conservative baseline) |
+| `Favicon` | HTML DOM | `<link rel="icon">` domain origin | High | `{-1, 1}`: -1 if foreign domain, 1 if same/relative |
+| `port` | Lexical | URL port inspection | High | `{-1, 1}`: 1 if standard (80/443/8080), -1 if nonstandard |
+| `HTTPS_token` | Lexical | `https` string search in hostname | High | `{-1, 1}`: -1 if `https` in host, 1 if clean |
+| `Request_URL` | HTML DOM | `<img>`, `<video>`, `<audio>` sources | High | `{-1, 1}`: -1 if >=61% foreign media, 1 if <61% |
+| `URL_of_Anchor` | HTML DOM | `<a>` tags with `#`, `javascript:`, foreign | High | `{-1, 0, 1}`: -1 if >67%, 0 if 31-67%, 1 if <31% |
+| `Links_in_tags` | HTML DOM | `<meta>`, `<script>`, `<link>` domains | High | `{-1, 0, 1}`: -1 if >81%, 0 if 17-81%, 1 if <17% |
+| `SFH` | HTML DOM | `<form action="...">` origin analysis | High | `{-1, 0, 1}`: -1 if empty/'about:blank', 0 foreign, 1 same |
+| `Submitting_to_email` | HTML DOM | `mailto:` protocol in forms/anchors | High | `{-1, 1}`: -1 if `mailto:` present, 1 if clean |
+| `Abnormal_URL` | Lexical | Host identity vs path consistency | High | `{-1, 1}`: 1 if normal host identity, -1 if abnormal |
+| `Redirect` | HTTP Net | HTTP 3xx redirect hop counter | High | `{0, 1}`: 0 if >1 redirects, 1 if <=1 redirect |
+| `on_mouseover` | HTML DOM | `window.status` manipulation search | High | `{-1, 1}`: -1 if status modified, 1 if clean |
+| `RightClick` | HTML DOM | `event.button==2` or contextmenu block | High | `{-1, 1}`: -1 if right click disabled, 1 if clean |
+| `popUpWidnow` | HTML DOM | `window.open` credential prompt search | High | `{-1, 1}`: -1 if popup prompt, 1 if clean |
+| `Iframe` | HTML DOM | `<iframe>` with `frameborder="0"` / hidden | High | `{-1, 1}`: -1 if invisible iframe, 1 if clean |
+| `age_of_domain` | External | WHOIS domain creation date | Retired/Commercial | `{-1, 1}`: Fallback 1 if active TLS/DNS, else -1 |
+| `DNSRecord` | DNS/TLS | DNS A/AAAA resolution probe | High | `{-1, 1}`: 1 if domain resolves, -1 if NXDOMAIN |
+| `web_traffic` | External | Alexa traffic popularity rank | Sunset May 2022 | `{-1, 0, 1}`: Fallback -1 (conservative baseline) |
+| `Page_Rank` | External | Google PageRank Toolbar API | Sunset Apr 2016 | `{-1, 1}`: Fallback -1 (conservative baseline) |
+| `Google_Index` | External | Search engine index status | Commercial/Private | `{-1, 1}`: Fallback 1 if live site accessible, else -1 |
+| `Links_pointing_to_page` | External | Inbound backlinks count | Commercial API | `{-1, 0, 1}`: Fallback 0 (neutral unknown) |
+| `Statistical_report` | External | PhishTank / StopBadware blacklist | External Feed | `{-1, 1}`: Fallback 1 (clean default) |
+
+### SSRF Protection & Safety Controls
+1. **Scheme Restriction:** Accepts strictly `http` and `https` schemes; rejects `file://`, `ftp://`, `data:`, `javascript:`, and malformed protocols.
+2. **Credentials Blocking:** Rejects URLs containing embedded user authentication (`http://user:pass@host`).
+3. **Private Network & Loopback Defense:**
+   - Pre-resolves DNS before any network connection.
+   - Blocks private RFC 1918 blocks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+   - Blocks loopback (`127.0.0.0/8`, `::1`) and localhost hostnames (`localhost`, `*.localhost`, `*.local`).
+   - Blocks cloud metadata and link-local destinations (`169.254.0.0/16`, `fe80::/10`).
+   - Blocks multicast and reserved IP spaces (`224.0.0.0/4`, `240.0.0.0/4`).
+4. **Execution Safety:** HTML is parsed using a streaming Python standard library parser without JavaScript execution.
+5. **Resource Caps:** Enforces a strict 3.0-second timeout, 512 KB max download limit, and maximum 2 redirect hops.
+
+### API Contract (`POST /predict-url`)
+
+**Request:**
+```json
+{
+  "url": "https://example.com",
+  "allow_heuristics": true,
+  "fetch_network": true
+}
+```
+
+**Response (Success with Heuristic Baseline):**
+```json
+{
+  "status": "success",
+  "url": "https://example.com",
+  "prediction": "legitimate",
+  "class_id": 1,
+  "model_score": 0.71875,
+  "feature_coverage": "heuristic",
+  "extracted_count": 30,
+  "total_expected": 30,
+  "features": { ... 30 discrete feature values ... },
+  "stages": {
+    "url_lexical": {"status": "success", "count": 10},
+    "dns_tls": {"status": "success", "count": 2},
+    "html_content": {"status": "success", "count": 11},
+    "external_intel": {"status": "heuristic_baseline", "count": 7}
+  },
+  "unsupported_features": [],
+  "warnings": [
+    "External intelligence features (Alexa Rank, Google PageRank) use documented baseline defaults because original upstream APIs have been retired."
+  ]
+}
+```
+
+**Response (Strict Mode / Unsupported Features):**
+```json
+{
+  "status": "unsupported_features",
+  "url": "https://example.com",
+  "prediction": null,
+  "class_id": null,
+  "model_score": null,
+  "feature_coverage": "incomplete",
+  "extracted_count": 23,
+  "total_expected": 30,
+  "features": { ... 23 features ... },
+  "stages": { ... },
+  "unsupported_features": [
+    "web_traffic", "Page_Rank", "Google_Index", "Links_pointing_to_page",
+    "Statistical_report", "Domain_registeration_length", "age_of_domain"
+  ],
+  "message": "Feature vector is incomplete because third-party intelligence services (e.g. Alexa Rank, Google PageRank) are retired or unavailable. Enable 'allow_heuristics' to apply documented baseline defaults."
+}
+```
+
 
 ## 📌 Roadmap
 
@@ -439,6 +556,6 @@ Configure the backend API URL via `VITE_API_BASE_URL`:
 ## 👨‍💻 Author
 
 **Rahul Manchanda**
-- 📧 Email: [rahulmanchanda015@gmail.com](mailto:rahulmanchanda015@gmail.com)  
-- 💼 LinkedIn: [Rahul Manchanda](https://www.linkedin.com/in/rahul-manchanda-3959b120a/)  
-- 💻 GitHub: [rahul15-manch](https://github.com/rahul15-manch)  
+- 📧 Email: [rahulmanchanda015@gmail.com](mailto:rahulmanchanda015@gmail.com)
+- 💼 LinkedIn: [Rahul Manchanda](https://www.linkedin.com/in/rahul-manchanda-3959b120a/)
+- 💻 GitHub: [rahul15-manch](https://github.com/rahul15-manch)

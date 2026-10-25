@@ -1,18 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ResultCard } from '../components/ResultCard';
-import type { PredictionResponse } from '../types';
+import type { UnifiedResult } from '../types';
 
 describe('ResultCard Component', () => {
   it('renders loading state when inference is in progress', () => {
     render(<ResultCard result={null} isLoading={true} error={null} />);
-    expect(screen.getByText(/Executing Random Forest Inference/i)).toBeInTheDocument();
+    expect(screen.getByText(/Executing Feature Pipeline & Inference/i)).toBeInTheDocument();
   });
 
   it('renders error message when API call fails', () => {
     const errorMsg = 'Model artifact not available on server';
     render(<ResultCard result={null} isLoading={false} error={errorMsg} />);
-    expect(screen.getByText(/Inference Request Failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Analysis Request Failed/i)).toBeInTheDocument();
     expect(screen.getByText(errorMsg)).toBeInTheDocument();
   });
 
@@ -21,11 +21,57 @@ describe('ResultCard Component', () => {
     expect(screen.getByText(/No Prediction Generated Yet/i)).toBeInTheDocument();
   });
 
+  it('renders incomplete feature vector warning and enable button in strict mode', () => {
+    const mockIncompleteResult: UnifiedResult = {
+      status: 'unsupported_features',
+      url: 'https://example.com',
+      prediction: null,
+      class_id: null,
+      model_score: null,
+      feature_coverage: 'incomplete',
+      extracted_count: 23,
+      total_expected: 30,
+      features: {},
+      stages: {},
+      unsupported_features: ['web_traffic', 'Page_Rank', 'Google_Index'],
+      warnings: [],
+    };
+    const mockEnableHeuristics = vi.fn();
+
+    render(
+      <ResultCard
+        result={mockIncompleteResult}
+        isLoading={false}
+        error={null}
+        onEnableHeuristics={mockEnableHeuristics}
+      />
+    );
+
+    expect(screen.getByText(/Strict Mode Halted: 7 Features Require External Baseline/i)).toBeInTheDocument();
+    expect(screen.getByText('web_traffic')).toBeInTheDocument();
+    expect(screen.getByText('Page_Rank')).toBeInTheDocument();
+
+    const enableBtn = screen.getByRole('button', { name: /Enable Baseline Heuristics/i });
+    fireEvent.click(enableBtn);
+    expect(mockEnableHeuristics).toHaveBeenCalled();
+  });
+
   it('renders phishing detection outcome with red accents, high risk, and class_id 0', () => {
-    const mockPhishingResult: PredictionResponse = {
+    const mockPhishingResult: UnifiedResult = {
+      status: 'success',
+      url: 'http://apple-verify.evil.com',
       prediction: 'phishing',
       class_id: 0,
       model_score: 0.035, // 3.5% legitimate => 96.5% phishing risk
+      feature_coverage: 'heuristic',
+      extracted_count: 30,
+      total_expected: 30,
+      features: {},
+      stages: {
+        url_lexical: { status: 'success', count: 10, details: '10 lexical features extracted' },
+      },
+      unsupported_features: [],
+      warnings: [],
     };
 
     render(<ResultCard result={mockPhishingResult} isLoading={false} error={null} />);
@@ -34,14 +80,25 @@ describe('ResultCard Component', () => {
     expect(screen.getByText(/Class ID: 0/i)).toBeInTheDocument();
     expect(screen.getByText(/HIGH RISK/i)).toBeInTheDocument();
     expect(screen.getByText(/Phishing Risk: 96.5%/i)).toBeInTheDocument();
-    expect(screen.getByText(/Security Notice:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Target:/i)).toBeInTheDocument();
+    expect(screen.getByText('http://apple-verify.evil.com')).toBeInTheDocument();
+    expect(screen.getByText(/Heuristic Baseline/i)).toBeInTheDocument();
   });
 
   it('renders legitimate website outcome with green accents, low risk, and class_id 1', () => {
-    const mockLegitResult: PredictionResponse = {
+    const mockLegitResult: UnifiedResult = {
+      status: 'success',
+      url: 'https://www.google.com',
       prediction: 'legitimate',
       class_id: 1,
       model_score: 0.942, // 94.2% legitimate
+      feature_coverage: 'complete',
+      extracted_count: 30,
+      total_expected: 30,
+      features: {},
+      stages: {},
+      unsupported_features: [],
+      warnings: [],
     };
 
     render(<ResultCard result={mockLegitResult} isLoading={false} error={null} />);
@@ -50,6 +107,6 @@ describe('ResultCard Component', () => {
     expect(screen.getByText(/Class ID: 1/i)).toBeInTheDocument();
     expect(screen.getByText(/LOW RISK/i)).toBeInTheDocument();
     expect(screen.getByText(/Legitimate: 94.2%/i)).toBeInTheDocument();
-    expect(screen.getByText(/Security Notice:/i)).toBeInTheDocument();
+    expect(screen.getByText(/100% Complete/i)).toBeInTheDocument();
   });
 });

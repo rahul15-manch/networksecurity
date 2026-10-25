@@ -68,3 +68,73 @@ class PredictionPipeline:
             raise
         except Exception as e:
             raise NetworkSecurityException(e, sys)
+
+    def predict_url(
+        self,
+        url: str,
+        allow_heuristics: bool = True,
+        fetch_network: bool = True,
+        mock_html: str = None,
+        mock_dns: bool = None,
+    ) -> Dict[str, Any]:
+        """
+        Extracts 30 features from a submitted URL and runs model prediction.
+        Enforces SSRF protections and returns structured pipeline details.
+        """
+        try:
+            from networksecurity.components.url_feature_extractor import URLFeatureExtractor
+            extractor = URLFeatureExtractor()
+            extraction_res = extractor.extract_features(
+                url=url,
+                allow_heuristics=allow_heuristics,
+                fetch_network=fetch_network,
+                mock_html=mock_html,
+                mock_dns=mock_dns,
+            )
+
+            coverage = extraction_res["feature_coverage"]
+            if coverage == "incomplete":
+                return {
+                    "status": "unsupported_features",
+                    "url": url,
+                    "prediction": None,
+                    "class_id": None,
+                    "model_score": None,
+                    "feature_coverage": coverage,
+                    "extracted_count": extraction_res["extracted_count"],
+                    "total_expected": extraction_res["total_expected"],
+                    "features": extraction_res["features"],
+                    "stages": extraction_res["stages"],
+                    "unsupported_features": extraction_res["unsupported_features"],
+                    "warnings": extraction_res["warnings"],
+                    "message": (
+                        "Feature vector is incomplete because third-party intelligence services "
+                        "(e.g. Alexa Rank, Google PageRank) are retired or unavailable. "
+                        "Enable 'allow_heuristics' to apply documented baseline defaults."
+                    ),
+                }
+
+            # Predict with full feature vector
+            preds = self.predict_with_details(extraction_res["features"])
+            if not preds:
+                raise ValueError("Inference returned empty results for URL feature vector.")
+
+            primary = preds[0]
+            return {
+                "status": "success",
+                "url": url,
+                "prediction": primary["prediction"],
+                "class_id": primary["class_id"],
+                "model_score": primary["model_score"],
+                "feature_coverage": coverage,
+                "extracted_count": extraction_res["extracted_count"],
+                "total_expected": extraction_res["total_expected"],
+                "features": extraction_res["features"],
+                "stages": extraction_res["stages"],
+                "unsupported_features": [],
+                "warnings": extraction_res["warnings"],
+            }
+        except (FileNotFoundError, TypeError, ValueError):
+            raise
+        except Exception as e:
+            raise NetworkSecurityException(e, sys)

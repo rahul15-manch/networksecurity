@@ -1,11 +1,12 @@
 import os
 import sys
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from networksecurity.components.url_feature_extractor import SSRFSecurityViolation, InvalidURLFormatError
 from networksecurity.logging.logger import logging
 from networksecurity.pipeline.prediction_pipeline import PredictionPipeline
 from networksecurity.utils.ml_utils.model.estimator import EXPECTED_FEATURES
@@ -14,12 +15,11 @@ from networksecurity.utils.ml_utils.model.estimator import EXPECTED_FEATURES
 app = FastAPI(
     title="Network Security - Phishing Detection API",
     description=(
-        "REST API for real-time and batch phishing website classification.\n\n"
-        "**Important Note:** Raw URL feature extraction is not implemented in this version. "
-        "The model strictly evaluates the 30 pre-engineered domain/network security features "
-        "defined in the dataset schema (discrete values: -1, 0, or 1)."
+        "REST API for real-time URL and batch phishing website classification.\n\n"
+        "Features end-to-end URL feature extraction with strict SSRF defenses, DNS/TLS inspection, "
+        "DOM attribute parsing, and Random Forest inference."
     ),
-    version="1.0.0",
+    version="1.1.0",
 )
 
 # Configure CORS
@@ -91,6 +91,29 @@ class BatchPredictionResponse(BaseModel):
     predictions: List[PredictionResponse] = Field(..., description="List of prediction outputs")
 
 
+class URLPredictionRequest(BaseModel):
+    url: str = Field(..., description="Target web URL to evaluate (must use http or https scheme)")
+    allow_heuristics: bool = Field(True, description="Whether to apply documented baseline defaults for retired third-party services")
+    fetch_network: bool = Field(True, description="Whether to probe DNS/TLS and fetch HTML over the network with SSRF protection")
+
+
+class URLPredictionResponse(BaseModel):
+    status: str = Field(..., description="Execution status: 'success' or 'unsupported_features'")
+    url: str = Field(..., description="Target evaluated URL")
+    prediction: Optional[str] = Field(None, description="Model prediction: 'phishing' or 'legitimate' (or None if incomplete)")
+    class_id: Optional[int] = Field(None, description="Binary class ID: 0 (phishing) or 1 (legitimate)")
+    model_score: Optional[float] = Field(None, description="Estimated legitimate class probability (0.0 to 1.0)")
+    feature_coverage: str = Field(..., description="Feature completeness: 'complete', 'heuristic', or 'incomplete'")
+    extracted_count: int = Field(..., description="Number of extracted features")
+    total_expected: int = Field(30, description="Total features required by model (30)")
+    features: dict = Field(default_factory=dict, description="Extracted 30-feature vector")
+    stages: dict = Field(default_factory=dict, description="Progress and details for each extraction stage")
+    unsupported_features: List[str] = Field(default_factory=list, description="List of features requiring unavailable third parties")
+    warnings: List[str] = Field(default_factory=list, description="Security notes and baseline assumptions")
+    message: Optional[str] = Field(None, description="Actionable status message or guidance")
+
+
+
 class HealthResponse(BaseModel):
     status: str = Field(..., description="Service health state: 'healthy' or 'degraded'")
     model_loaded: bool = Field(..., description="Whether the NetworkModel artifact is loaded in memory")
@@ -118,6 +141,17 @@ def root():
         "health_url": "/health",
         "supported_features": EXPECTED_FEATURES,
     }
+
+
+@app.websocket("/ws/frontend")
+async def websocket_frontend_handler(websocket: WebSocket):
+    """Handles optional IDE or frontend live preview WebSocket probes."""
+    await websocket.accept()
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
 
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
@@ -208,6 +242,53 @@ def predict_batch(request: BatchPredictionRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal inference failure while processing batch features.",
+        )
+
+
+@app.post("/predict-url", response_model=URLPredictionResponse, tags=["Inference"])
+def predict_from_url(request: URLPredictionRequest):
+    """
+    Extracts 30 cybersecurity features from a submitted URL and runs real-time
+    Random Forest inference to classify the website as phishing or legitimate.
+    Enforces strict SSRF protections against internal, loopback, and private targets.
+    """
+    try:
+        result = pipeline.predict_url(
+            url=request.url,
+            allow_heuristics=request.allow_heuristics,
+            fetch_network=request.fetch_network,
+        )
+        return URLPredictionResponse(**result)
+    except SSRFSecurityViolation as ssrf_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Security violation: {ssrf_err}",
+        )
+    except InvalidURLFormatError as url_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid URL structure: {url_err}",
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Model artifact is not available. Please ensure model training has been completed.",
+        )
+    except (ValueError, KeyError) as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        err_msg = str(e)
+        if "ssrf" in err_msg.lower():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err_msg)
+        if "not found" in err_msg.lower() or "filenotfound" in err_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Model artifact is not available. Please ensure model training has been completed.",
+            )
+        logging.error(f"URL prediction pipeline failed for URL: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal inference failure while processing submitted URL.",
         )
 
 

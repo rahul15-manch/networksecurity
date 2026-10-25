@@ -1,23 +1,42 @@
-import React from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Info, Clock, CheckCircle2 } from 'lucide-react';
-import type { PredictionResponse } from '../types';
+import React, { useState } from 'react';
+import {
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Info,
+  Clock,
+  CheckCircle2,
+  Globe,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle
+} from 'lucide-react';
+import type { UnifiedResult } from '../types';
 
 interface ResultCardProps {
-  result: PredictionResponse | null;
+  result: UnifiedResult | null;
   isLoading: boolean;
   error: string | null;
+  onEnableHeuristics?: () => void;
 }
 
-export const ResultCard: React.FC<ResultCardProps> = ({ result, isLoading, error }) => {
+export const ResultCard: React.FC<ResultCardProps> = ({
+  result,
+  isLoading,
+  error,
+  onEnableHeuristics
+}) => {
+  const [showStages, setShowStages] = useState(false);
+
   if (isLoading) {
     return (
       <div className="p-6 rounded-xl bg-[#171717] border border-[#303030] shadow-card-dark text-center animate-pulse">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#202020] text-[#DC2626] mb-4">
           <div className="w-6 h-6 border-2 border-[#DC2626] border-t-transparent rounded-full animate-spin" />
         </div>
-        <h3 className="text-lg font-semibold text-[#F5F5F5]">Executing Random Forest Inference...</h3>
+        <h3 className="text-lg font-semibold text-[#F5F5F5]">Executing Feature Pipeline & Inference...</h3>
         <p className="text-sm text-[#A3A3A3] mt-1 font-mono">
-          Evaluating 30 preprocessed feature dimensions through fitted ensemble estimators.
+          Extracting DOM, TLS, and DNS attributes then evaluating Random Forest (n=128) ensemble.
         </p>
       </div>
     );
@@ -29,10 +48,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, isLoading, error
         <div className="flex items-start space-x-3">
           <AlertTriangle className="w-6 h-6 text-[#DC2626] flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-base font-semibold text-[#F5F5F5]">Inference Request Failed</h3>
+            <h3 className="text-base font-semibold text-[#F5F5F5]">Analysis Request Failed</h3>
             <p className="text-sm text-[#EF4444] mt-1 font-mono">{error}</p>
             <p className="text-xs text-[#A3A3A3] mt-2">
-              Verify that the backend service is running on port 8000 and the model artifact exists at final_model/model.pkl.
+              Ensure the URL is a supported public HTTP/HTTPS destination and the backend is running.
             </p>
           </div>
         </div>
@@ -46,13 +65,66 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, isLoading, error
         <ShieldAlert className="w-10 h-10 text-[#737373] mx-auto mb-3" />
         <h3 className="text-base font-semibold text-[#F5F5F5]">No Prediction Generated Yet</h3>
         <p className="text-sm text-[#A3A3A3] mt-1 max-w-md mx-auto">
-          Select a template above or adjust the 30 feature toggles, then click &quot;Analyze Feature Vector&quot; to inspect model classification.
+          Enter a web URL above and click &quot;Analyze Live URL&quot; or select a preset vector to inspect model classification.
         </p>
       </div>
     );
   }
 
-  const isPhishing = result.prediction.toLowerCase() === 'phishing' || result.class_id === 0;
+  // Handle Incomplete / Unsupported Features State
+  if (result.status === 'unsupported_features' || result.feature_coverage === 'incomplete' || result.prediction === null) {
+    return (
+      <div className="p-6 rounded-xl bg-[#171717] border border-[#F59E0B] shadow-[0_0_20px_-5px_rgba(245,158,11,0.2)] text-left space-y-4">
+        <div className="flex items-start space-x-3">
+          <AlertCircle className="w-6 h-6 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="text-xs font-mono uppercase tracking-wider text-[#F59E0B] font-bold block">
+              Incomplete Feature Vector
+            </span>
+            <h3 className="text-lg font-bold text-[#F5F5F5] mt-0.5">
+              Strict Mode Halted: 7 Features Require External Baseline
+            </h3>
+            <p className="text-sm text-[#A3A3A3] mt-2 leading-relaxed">
+              The Random Forest model requires an exact 30-feature vector. Several features (such as Alexa Traffic Rank [retired 2022] and Google PageRank [retired 2016]) cannot be faithfully derived from live internet queries without baseline heuristics.
+            </p>
+          </div>
+        </div>
+
+        {/* List of Unsupported Features */}
+        {result.unsupported_features && result.unsupported_features.length > 0 && (
+          <div className="p-3 rounded-lg bg-[#111111] border border-[#303030]">
+            <span className="text-xs font-mono text-[#A3A3A3] block mb-2">
+              Unavailable Live Services ({result.unsupported_features.length}):
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {result.unsupported_features.map((feat) => (
+                <span key={feat} className="px-2 py-0.5 rounded text-[11px] font-mono bg-[#202020] text-[#F59E0B] border border-[#F59E0B]/30">
+                  {feat}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Action button to enable heuristics */}
+        {onEnableHeuristics && (
+          <button
+            type="button"
+            onClick={onEnableHeuristics}
+            className="w-full py-2.5 px-4 rounded-lg bg-[#DC2626] hover:bg-[#EF4444] text-white font-medium text-sm transition-all shadow-glow-red active:scale-95 text-center font-mono"
+          >
+            Enable Baseline Heuristics & Evaluate Model
+          </button>
+        )}
+
+        <p className="text-xs text-[#737373] italic">
+          * PhishGuard does not fabricate fake predictions when required features are missing in strict mode.
+        </p>
+      </div>
+    );
+  }
+
+  const isPhishing = String(result.prediction).toLowerCase() === 'phishing' || result.class_id === 0;
   const legitimateProb = result.model_score !== null ? (result.model_score * 100) : null;
   const phishingProb = legitimateProb !== null ? (100 - legitimateProb) : null;
 
@@ -112,6 +184,32 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, isLoading, error
         </div>
       </div>
 
+      {/* Target URL & Coverage Metadata if URL analysis */}
+      {result.url && (
+        <div className="py-3.5 border-b border-[#303030] text-xs font-mono space-y-2">
+          <div className="flex items-center justify-between gap-2 overflow-hidden">
+            <span className="text-[#A3A3A3] flex items-center space-x-1 flex-shrink-0">
+              <Globe className="w-3.5 h-3.5 text-[#DC2626]" />
+              <span>Target:</span>
+            </span>
+            <span className="text-[#F5F5F5] truncate font-semibold" title={result.url}>
+              {result.url}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#A3A3A3]">Feature Coverage:</span>
+            <span className={`px-2 py-0.5 rounded uppercase font-bold text-[10px] ${
+              result.feature_coverage === 'complete'
+                ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
+                : 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40'
+            }`}>
+              {result.feature_coverage === 'complete' ? '100% Complete' : 'Heuristic Baseline (UCI Standard)'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Model Probability Breakdown */}
       {result.model_score !== null && legitimateProb !== null && phishingProb !== null && (
         <div className="py-5 border-b border-[#303030] space-y-3">
@@ -147,6 +245,49 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, isLoading, error
         </div>
       )}
 
+      {/* Extraction Stage Breakdown Accordion */}
+      {result.stages && (
+        <div className="py-3 border-b border-[#303030]">
+          <button
+            type="button"
+            onClick={() => setShowStages(!showStages)}
+            className="w-full flex items-center justify-between text-xs font-mono text-[#A3A3A3] hover:text-[#F5F5F5] py-1 transition-colors"
+          >
+            <span className="flex items-center space-x-1.5 font-bold">
+              <span>Pipeline Stage Breakdown</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#202020] text-[#F5F5F5]">4 Stages</span>
+            </span>
+            {showStages ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+
+          {showStages && (
+            <div className="mt-3 space-y-2 text-xs font-mono">
+              {Object.entries(result.stages).map(([stageKey, stageInfo]) => (
+                <div key={stageKey} className="p-2.5 rounded bg-[#111111] border border-[#303030] flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[#F5F5F5] font-semibold capitalize block">
+                      {stageKey.replace('_', ' ')}
+                    </span>
+                    <span className="text-[11px] text-[#A3A3A3] mt-0.5 block">
+                      {stageInfo.details || stageInfo.reason || 'Completed'}
+                    </span>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase flex-shrink-0 ${
+                    stageInfo.status === 'success'
+                      ? 'bg-[#10B981]/20 text-[#10B981]'
+                      : stageInfo.status === 'heuristic_baseline'
+                      ? 'bg-[#F59E0B]/20 text-[#F59E0B]'
+                      : 'bg-[#DC2626]/20 text-[#EF4444]'
+                  }`}>
+                    {stageInfo.count ? `${stageInfo.count} Feats` : stageInfo.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Key Factors & Details */}
       <div className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
         <div className="p-3 rounded-lg bg-[#111111] border border-[#303030]">
@@ -166,7 +307,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, isLoading, error
           <span className="text-[#A3A3A3] block">Response Latency</span>
           <span className="text-[#F5F5F5] font-semibold mt-0.5 block flex items-center space-x-1">
             <Clock className="w-3.5 h-3.5 text-[#A3A3A3]" />
-            <span>&lt; 20ms Local Infer</span>
+            <span>&lt; 50ms Real Pipeline</span>
           </span>
         </div>
       </div>

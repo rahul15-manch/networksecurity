@@ -6,15 +6,17 @@ import { ResultCard } from './components/ResultCard';
 import { MetricsSection } from './components/MetricsSection';
 import { ArchitectureSection } from './components/ArchitectureSection';
 import { Footer } from './components/Footer';
-import { checkHealth, predictPhishing } from './services/api';
-import type { HealthResponse, PhishingFeatures, PredictionResponse } from './types';
+import { checkHealth, predictPhishing, predictURL } from './services/api';
+import type { HealthResponse, PhishingFeatures, UnifiedResult } from './types';
 import { PRESETS } from './types';
 
 export const App: React.FC = () => {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [activeTab, setActiveTab] = useState<'analyze' | 'metrics' | 'architecture'>('analyze');
   const [features, setFeatures] = useState<PhishingFeatures>(PRESETS.phishing.features);
-  const [result, setResult] = useState<PredictionResponse | null>(null);
+  const [urlInput, setUrlInput] = useState<string>('https://secure-login.apple-account-verification.com/auth');
+  const [allowHeuristics, setAllowHeuristics] = useState<boolean>(true);
+  const [result, setResult] = useState<UnifiedResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +32,7 @@ export const App: React.FC = () => {
           setHealth({
             status: 'degraded',
             model_loaded: false,
-            version: '1.0.0',
+            version: '1.1.0',
             supported_features_count: 30,
           });
         }
@@ -46,15 +48,14 @@ export const App: React.FC = () => {
     setError(null);
   };
 
-  const handleAnalyze = async () => {
-    if (isLoading) return; // Prevent duplicate submissions
+  const handleAnalyzeVector = async () => {
+    if (isLoading) return;
     setIsLoading(true);
     setError(null);
 
     try {
       const prediction = await predictPhishing(features);
       setResult(prediction);
-      // Smoothly scroll down to prediction result card
       const resultElem = document.getElementById('results-view');
       if (resultElem) {
         resultElem.scrollIntoView({ behavior: 'smooth' });
@@ -64,6 +65,47 @@ export const App: React.FC = () => {
       setResult(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAnalyzeUrl = async (targetUrl: string, heuristics: boolean) => {
+    if (isLoading) return;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const urlResponse = await predictURL({
+        url: targetUrl,
+        allow_heuristics: heuristics,
+        fetch_network: true,
+      });
+
+      setResult(urlResponse);
+
+      // If features were extracted, sync with 30-feature vector controls
+      if (urlResponse.features && Object.keys(urlResponse.features).length > 0) {
+        setFeatures(prev => ({
+          ...prev,
+          ...urlResponse.features,
+        }));
+      }
+
+      const resultElem = document.getElementById('results-view');
+      if (resultElem) {
+        resultElem.scrollIntoView({ behavior: 'smooth' });
+      }
+    } catch (err: any) {
+      setError(err.message || 'URL feature extraction or inference failed.');
+      setResult(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEnableHeuristicsAndReanalyze = () => {
+    setAllowHeuristics(true);
+    if (urlInput) {
+      handleAnalyzeUrl(urlInput, true);
     }
   };
 
@@ -87,14 +129,19 @@ export const App: React.FC = () => {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* 2-Columns for 30 Feature Controls */}
+                {/* 2-Columns for URL & Feature Controls */}
                 <div className="lg:col-span-2 space-y-6">
                   <AnalysisPanel
                     features={features}
                     setFeatures={setFeatures}
-                    onAnalyze={handleAnalyze}
+                    onAnalyzeVector={handleAnalyzeVector}
+                    onAnalyzeUrl={handleAnalyzeUrl}
                     isLoading={isLoading}
                     onSelectPreset={handleSelectPreset}
+                    urlInput={urlInput}
+                    setUrlInput={setUrlInput}
+                    allowHeuristics={allowHeuristics}
+                    setAllowHeuristics={setAllowHeuristics}
                   />
                 </div>
 
@@ -105,7 +152,12 @@ export const App: React.FC = () => {
                       <span className="text-xs font-mono uppercase tracking-wider text-[#A3A3A3] block mb-2 font-bold">
                         Inference Output
                       </span>
-                      <ResultCard result={result} isLoading={isLoading} error={error} />
+                      <ResultCard
+                        result={result}
+                        isLoading={isLoading}
+                        error={error}
+                        onEnableHeuristics={handleEnableHeuristicsAndReanalyze}
+                      />
                     </div>
 
                     {/* Quick Model Summary Card */}

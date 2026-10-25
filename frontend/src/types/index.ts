@@ -40,6 +40,47 @@ export interface PredictionResponse {
   model_score: number | null;
 }
 
+export interface ExtractionStageInfo {
+  status: 'success' | 'partial' | 'failed' | 'heuristic_baseline' | 'unsupported';
+  count?: number;
+  details?: string;
+  reason?: string;
+  error?: string;
+}
+
+export interface URLPredictionRequest {
+  url: string;
+  allow_heuristics?: boolean;
+  fetch_network?: boolean;
+}
+
+export interface URLPredictionResponse {
+  status: 'success' | 'unsupported_features';
+  url: string;
+  prediction: 'phishing' | 'legitimate' | string | null;
+  class_id: 0 | 1 | null;
+  model_score: number | null;
+  feature_coverage: 'complete' | 'heuristic' | 'incomplete';
+  extracted_count: number;
+  total_expected: number;
+  features: Record<string, number>;
+  stages: Record<string, ExtractionStageInfo>;
+  unsupported_features: string[];
+  warnings: string[];
+  message?: string;
+}
+
+export type UnifiedResult = (PredictionResponse | URLPredictionResponse) & {
+  status?: string;
+  url?: string;
+  feature_coverage?: string;
+  stages?: Record<string, ExtractionStageInfo>;
+  unsupported_features?: string[];
+  warnings?: string[];
+  message?: string;
+};
+
+
 export interface HealthResponse {
   status: "healthy" | "degraded" | string;
   model_loaded: boolean;

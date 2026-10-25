@@ -30,7 +30,7 @@ export const Hero: React.FC<HeroProps> = ({ onSelectPreset, onScrollToAnalyzer }
         </h1>
 
         <p className="mt-4 text-base sm:text-lg text-[#A3A3A3] max-w-2xl mx-auto leading-relaxed">
-          Evaluate 30 high-fidelity lexical, DNS, SSL, and behavioral website attributes using 
+          Evaluate 30 high-fidelity lexical, DNS, SSL, and behavioral website attributes using
           an audited <strong className="text-[#F5F5F5]">Random Forest (n=128)</strong> ensemble model trained on vetted cybersecurity benchmarks.
         </p>
 
@@ -65,7 +65,7 @@ export const Hero: React.FC<HeroProps> = ({ onSelectPreset, onScrollToAnalyzer }
         <div className="mt-8 max-w-2xl mx-auto p-3 rounded-lg bg-[#111111]/90 border border-[#303030] flex items-center justify-center space-x-2 text-xs text-[#A3A3A3]">
           <Terminal className="w-4 h-4 text-[#DC2626] flex-shrink-0" />
           <span>
-            <strong className="text-[#F5F5F5]">Model Input Contract:</strong> The inference service evaluates 30 discrete engineered features. Raw URLs are not scraped or visited over the network.
+            <strong className="text-[#F5F5F5]">End-to-End Pipeline Active:</strong> Submit live URLs for automated SSRF-defended feature extraction, or inspect and fine-tune all 30 engineered dimensions directly.
           </span>
         </div>
       </div>

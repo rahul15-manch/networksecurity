@@ -5,60 +5,94 @@ import { PRESETS } from '../types';
 
 describe('AnalysisPanel Component', () => {
   const mockSetFeatures = vi.fn();
-  const mockOnAnalyze = vi.fn();
+  const mockOnAnalyzeVector = vi.fn();
+  const mockOnAnalyzeUrl = vi.fn();
   const mockOnSelectPreset = vi.fn();
+  const mockSetUrlInput = vi.fn();
+  const mockSetAllowHeuristics = vi.fn();
 
-  it('renders all 30 feature controls and presets', () => {
+  it('renders URL input bar and 30 feature controls', () => {
     render(
       <AnalysisPanel
         features={PRESETS.phishing.features}
         setFeatures={mockSetFeatures}
-        onAnalyze={mockOnAnalyze}
+        onAnalyzeVector={mockOnAnalyzeVector}
+        onAnalyzeUrl={mockOnAnalyzeUrl}
         isLoading={false}
         onSelectPreset={mockOnSelectPreset}
+        urlInput="https://example.com"
+        setUrlInput={mockSetUrlInput}
+        allowHeuristics={true}
+        setAllowHeuristics={mockSetAllowHeuristics}
       />
     );
 
-    expect(screen.getByText(/Benchmark Vector Presets/i)).toBeInTheDocument();
-    expect(screen.getByText(/Credential Harvester/i)).toBeInTheDocument();
-    expect(screen.getByText(/Enterprise Banking Portal/i)).toBeInTheDocument();
+    expect(screen.getByText(/End-to-End URL Phishing Classifier/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analyze Live URL/i })).toBeInTheDocument();
     expect(screen.getByText(/IP Address in URL/i)).toBeInTheDocument();
-    expect(screen.getByText(/SSL \/ TLS Certificate State/i)).toBeInTheDocument();
+    expect(screen.getByText(/Apply Documented Baseline Defaults/i)).toBeInTheDocument();
   });
 
-  it('triggers preset selection when clicking preset card', () => {
+  it('triggers onAnalyzeUrl when clicking Analyze Live URL', () => {
     render(
       <AnalysisPanel
         features={PRESETS.phishing.features}
         setFeatures={mockSetFeatures}
-        onAnalyze={mockOnAnalyze}
+        onAnalyzeVector={mockOnAnalyzeVector}
+        onAnalyzeUrl={mockOnAnalyzeUrl}
         isLoading={false}
         onSelectPreset={mockOnSelectPreset}
+        urlInput="https://paypal-update.com/login"
+        setUrlInput={mockSetUrlInput}
+        allowHeuristics={true}
+        setAllowHeuristics={mockSetAllowHeuristics}
       />
     );
 
-    const legitBtn = screen.getByText(/Enterprise Banking Portal/i).closest('button');
-    expect(legitBtn).not.toBeNull();
-    fireEvent.click(legitBtn!);
-    expect(mockOnSelectPreset).toHaveBeenCalledWith(PRESETS.legitimate.features);
+    const analyzeBtn = screen.getByRole('button', { name: /Analyze Live URL/i });
+    fireEvent.click(analyzeBtn);
+    expect(mockOnAnalyzeUrl).toHaveBeenCalledWith('https://paypal-update.com/login', true);
   });
 
-  it('prevents duplicate submissions when loading is in progress', () => {
+  it('triggers onAnalyzeVector when clicking Evaluate Vector', () => {
     render(
       <AnalysisPanel
         features={PRESETS.phishing.features}
         setFeatures={mockSetFeatures}
-        onAnalyze={mockOnAnalyze}
+        onAnalyzeVector={mockOnAnalyzeVector}
+        onAnalyzeUrl={mockOnAnalyzeUrl}
+        isLoading={false}
+        onSelectPreset={mockOnSelectPreset}
+        urlInput="https://example.com"
+        setUrlInput={mockSetUrlInput}
+        allowHeuristics={true}
+        setAllowHeuristics={mockSetAllowHeuristics}
+      />
+    );
+
+    const vectorBtn = screen.getByRole('button', { name: /Evaluate Vector/i });
+    fireEvent.click(vectorBtn);
+    expect(mockOnAnalyzeVector).toHaveBeenCalled();
+  });
+
+  it('disables analyze button when loading is true', () => {
+    render(
+      <AnalysisPanel
+        features={PRESETS.phishing.features}
+        setFeatures={mockSetFeatures}
+        onAnalyzeVector={mockOnAnalyzeVector}
+        onAnalyzeUrl={mockOnAnalyzeUrl}
         isLoading={true}
         onSelectPreset={mockOnSelectPreset}
+        urlInput="https://example.com"
+        setUrlInput={mockSetUrlInput}
+        allowHeuristics={true}
+        setAllowHeuristics={mockSetAllowHeuristics}
       />
     );
 
-    const analyzeBtns = screen.getAllByRole('button', { name: /Analyzing/i });
-    expect(analyzeBtns.length).toBeGreaterThan(0);
-    for (const btn of analyzeBtns) {
-      expect(btn).toBeDisabled();
-    }
+    const loadingBtn = screen.getByRole('button', { name: /Extracting Features/i });
+    expect(loadingBtn).toBeDisabled();
   });
 
   it('allows category filtering of features', () => {
@@ -66,18 +100,21 @@ describe('AnalysisPanel Component', () => {
       <AnalysisPanel
         features={PRESETS.phishing.features}
         setFeatures={mockSetFeatures}
-        onAnalyze={mockOnAnalyze}
+        onAnalyzeVector={mockOnAnalyzeVector}
+        onAnalyzeUrl={mockOnAnalyzeUrl}
         isLoading={false}
         onSelectPreset={mockOnSelectPreset}
+        urlInput="https://example.com"
+        setUrlInput={mockSetUrlInput}
+        allowHeuristics={true}
+        setAllowHeuristics={mockSetAllowHeuristics}
       />
     );
 
     const sslFilterBtn = screen.getByRole('button', { name: 'Security & SSL' });
     fireEvent.click(sslFilterBtn);
 
-    // SSL feature should be present
     expect(screen.getByText(/SSL \/ TLS Certificate State/i)).toBeInTheDocument();
-    // Non-SSL feature like IP Address in URL should be filtered out
     expect(screen.queryByText(/IP Address in URL/i)).not.toBeInTheDocument();
   });
 });
