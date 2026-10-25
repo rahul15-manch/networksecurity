@@ -1,5 +1,9 @@
 # Vercel Deployment Exclusions
-# Exclude training artifacts, datasets, and local environments to stay under the 250MB bundle limit
+# Keep function bundle strictly below the Lambda size limit
+
+# Git metadata
+.git/
+.github/
 
 # Local virtual environment and caches
 venv/
@@ -16,7 +20,7 @@ Artifacts/
 mlruns/
 logs/
 
-# Local build artifacts and caches
+# Frontend local dependencies and non-distribution files
 frontend/node_modules/
 .DS_Store
 
@@ -24,6 +28,7 @@ frontend/node_modules/
 tests/
 test_mongodb.py
 push_data.py
+requirements-dev.txt
 
 # AWS deployment files (superseded by Vercel)
 deploy/aws/

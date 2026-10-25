@@ -7,7 +7,9 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 15,
-      "memory": 1024
+      "memory": 1024,
+      "includeFiles": "final_model/model.pkl",
+      "excludeFiles": "{Artifacts/**,08_22_2025_00_20_26/**,Network_Data/**,mlruns/**,logs/**,tests/**,frontend/**,deploy/**}"
     }
   },
   "rewrites": [
