@@ -361,6 +361,71 @@ Run the full automated test suite (55 unit and integration tests):
 
 - **Raw URLs not accepted:** The model and API do not currently implement automatic URL scraping, DNS queries, or lexical feature extraction. Predictions must be made using pre-computed engineered features. Submitting raw string URLs (e.g. `https://example.com`) directly is not supported.
 
+## 🛡️ PhishGuard Frontend Application
+
+A cybersecurity SaaS dashboard built with **React**, **Vite**, **TypeScript**, and **Tailwind CSS** featuring a dedicated Black, Red, Charcoal, and White theme.
+
+### 1. Design & Appearance
+- **Color Palette:**
+  - Primary Background: `#090909` (Deep void black)
+  - Card & Surfaces: `#171717` (Charcoal panels with `#303030` subtle borders)
+  - Accents: `#DC2626` (Crimson red), `#EF4444` (Hover red), `#991B1B` (Deep red)
+  - Text: `#F5F5F5` (High-contrast white) and `#A3A3A3` (Muted technical gray)
+  - Indicators: Accessible green (`#10B981`) for legitimate verdicts to avoid confusing safe outcomes with alerts.
+
+### 2. Frontend Installation & Local Startup
+
+Navigate to the `frontend/` directory and install dependencies:
+```bash
+cd frontend
+npm install
+```
+
+Start the Vite development server (proxies `/api` to backend at `http://localhost:8000`):
+```bash
+npm run dev
+```
+Open `http://localhost:5173` in your browser.
+
+### 3. Production Build & Verification
+
+Compile TypeScript and build the optimized production bundle:
+```bash
+npm run build
+```
+The output will be generated in `frontend/dist/`.
+
+### 4. Running Frontend Tests
+
+Execute the Vitest test suite covering component rendering, API error handling, and duplicate submission prevention:
+```bash
+npm run test
+```
+
+### 5. Frontend Environment Configuration
+
+Configure the backend API URL via `VITE_API_BASE_URL`:
+- Copy the template:
+  ```bash
+  cp .env.example .env
+  ```
+- Default configuration:
+  ```ini
+  VITE_API_BASE_URL=http://localhost:8000
+  ```
+
+### 6. Key Features & Screens
+1. **Analyze Vector:**
+   - Real-time prediction card with model confidence bar ($P(\text{legitimate}|X)$).
+   - Quick-load benchmark presets (Credential Harvester, Enterprise Banking Portal, Ambiguous Domain).
+   - Interactive 30-feature editor grouped by category (Lexical & URL, Security & SSL, Domain & DNS, Page Content & Scripting).
+   - Duplicate-submission prevention and accessible loading states.
+2. **Model Metrics:**
+   - Visual display of cross-validation F1 (95.52%), test accuracy (96.28%), test F1 (96.19%), and ROC-AUC (99.41%).
+   - Candidate model comparison matrix (Random Forest vs Gradient Boosting, Decision Tree, Logistic Regression, AdaBoost).
+3. **Pipeline & Limits:**
+   - 4-stage pipeline visualization and transparent limitation boundaries (no raw URL scraping, no SSRF network requests).
+
 ## 📌 Roadmap
 
 -  Deploy as REST API (FastAPI/Flask)
