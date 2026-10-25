@@ -27,14 +27,21 @@ class TestVercelDeploymentCompatibility(unittest.TestCase):
         self.assertEqual(v_config.get("outputDirectory"), "frontend/dist")
         self.assertIn("rewrites", v_config)
 
+        # Check .python-version (forces prebuilt wheels on Python 3.12)
+        py_ver_path = os.path.join(root_dir, ".python-version")
+        self.assertTrue(os.path.exists(py_ver_path), ".python-version must exist in root")
+        with open(py_ver_path, "r") as f:
+            py_ver = f.read().strip()
+        self.assertEqual(py_ver, "3.12", "Python version must be pinned to 3.12 for prebuilt binary wheels")
+
         # Check api/requirements.txt
         req_path = os.path.join(root_dir, "api", "requirements.txt")
         self.assertTrue(os.path.exists(req_path), "api/requirements.txt must exist")
         with open(req_path, "r") as f:
             req_content = f.read()
-        self.assertIn("fastapi", req_content)
-        self.assertIn("scikit-learn", req_content)
-        self.assertIn("pandas", req_content)
+        self.assertIn("--only-binary", req_content)
+        self.assertIn("scipy==1.15.3", req_content)
+        self.assertIn("scikit-learn==1.7.2", req_content)
         self.assertNotIn("mlflow", req_content, "Heavy MLFlow must NOT be in serverless requirements")
 
         # Check .vercelignore
