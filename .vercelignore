@@ -30,6 +30,11 @@ test_mongodb.py
 push_data.py
 requirements-dev.txt
 
-# AWS deployment files (superseded by Vercel)
-deploy/aws/
+# Development and training scripts
+deploy/
 Dockerfile
+main.py
+setup.py
+net
+data_schema/
+*.egg-info/
