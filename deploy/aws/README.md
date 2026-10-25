@@ -1,4 +1,7 @@
-# PhishGuard AWS Production Deployment Guide
+# PhishGuard AWS Production Deployment Guide (Superseded)
+
+> [!NOTE]
+> **Superseded by Vercel Zero-Cost Architecture:** To achieve zero out-of-pocket costs and eliminate ongoing EC2/EBS infrastructure charges, PhishGuard has transitioned to a Vercel-first serverless architecture. See [deploy/vercel/README.md](../vercel/README.md) for current zero-cost deployment instructions. The AWS documentation below is preserved for enterprise hosting requirements or dedicated virtual machine environments.
 
 This guide details the complete, production-grade deployment of the **PhishGuard** phishing detection platform on Amazon Web Services (AWS) in the **`ap-south-1` (Mumbai)** region.
 

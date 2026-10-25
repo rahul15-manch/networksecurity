@@ -1,0 +1,30 @@
+# Vercel Deployment Exclusions
+# Exclude training artifacts, datasets, and local environments to stay under the 250MB bundle limit
+
+# Local virtual environment and caches
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Raw datasets and intermediate training run artifacts (Model is loaded from final_model/)
+Network_Data/
+Artifacts/
+08_22_2025_00_20_26/
+mlruns/
+logs/
+
+# Local build artifacts and caches
+frontend/node_modules/
+.DS_Store
+
+# Test suites and development scripts
+tests/
+test_mongodb.py
+push_data.py
+
+# AWS deployment files (superseded by Vercel)
+deploy/aws/
+Dockerfile

@@ -1,7 +1,7 @@
 import os
 import sys
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -139,7 +139,10 @@ def startup_event():
         logging.warning(f"Model artifact could not be preloaded on startup: {e}")
 
 
-@app.get("/", tags=["Info"])
+api_router = APIRouter()
+
+
+@api_router.get("/", tags=["Info"])
 def root():
     return {
         "name": "Network Security - Phishing Detection API",
@@ -162,7 +165,7 @@ async def websocket_frontend_handler(websocket: WebSocket):
         pass
 
 
-@app.get("/health", response_model=HealthResponse, tags=["Health"])
+@api_router.get("/health", response_model=HealthResponse, tags=["Health"])
 def health_check():
     """
     Returns API health status and reports whether the machine learning artifact is operational.
@@ -183,7 +186,7 @@ def health_check():
     )
 
 
-@app.post("/predict", response_model=PredictionResponse, tags=["Inference"])
+@api_router.post("/predict", response_model=PredictionResponse, tags=["Inference"])
 def predict_single(item: PhishingFeatureItem):
     """
     Classifies a single website feature vector as 'phishing' (0) or 'legitimate' (1).
@@ -217,7 +220,7 @@ def predict_single(item: PhishingFeatureItem):
         )
 
 
-@app.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Inference"])
+@api_router.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Inference"])
 def predict_batch(request: BatchPredictionRequest):
     """
     Classifies multiple website feature vectors in a single batch request.
@@ -253,7 +256,7 @@ def predict_batch(request: BatchPredictionRequest):
         )
 
 
-@app.post("/predict-url", response_model=URLPredictionResponse, tags=["Inference"])
+@api_router.post("/predict-url", response_model=URLPredictionResponse, tags=["Inference"])
 def predict_from_url(request: URLPredictionRequest):
     """
     Extracts 30 cybersecurity features from a submitted URL and runs real-time
@@ -298,6 +301,11 @@ def predict_from_url(request: URLPredictionRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal inference failure while processing submitted URL.",
         )
+
+
+# Mount router both at root and with /api prefix for seamless Vercel and local routing
+app.include_router(api_router)
+app.include_router(api_router, prefix="/api")
 
 
 if __name__ == "__main__":

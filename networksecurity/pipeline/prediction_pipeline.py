@@ -21,10 +21,16 @@ class PredictionPipeline:
         Produces clear, actionable errors without exposing sensitive environment paths.
         """
         if not os.path.exists(self.model_path):
-            raise FileNotFoundError(
-                f"Model artifact not found at '{self.model_path}'. "
-                "Ensure the training pipeline has been executed and final model saved."
-            )
+            # Check relative to project root in serverless or subdirectory runtimes
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            alt_path = os.path.join(project_root, self.model_path)
+            if os.path.exists(alt_path):
+                self.model_path = alt_path
+            else:
+                raise FileNotFoundError(
+                    f"Model artifact not found at '{self.model_path}'. "
+                    "Ensure the training pipeline has been executed and final model saved."
+                )
         try:
             obj = load_object(self.model_path)
             if not isinstance(obj, NetworkModel):
