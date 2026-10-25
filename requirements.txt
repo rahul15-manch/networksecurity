@@ -8,9 +8,11 @@ pymongo
 certifi
 pymongo[srv]
 dill
-scikit-learn
 pyaml
 mlflow
 dagshub
+fastapi
+uvicorn
+pydantic
 
 ##-e .
