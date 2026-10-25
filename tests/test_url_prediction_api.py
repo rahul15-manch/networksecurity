@@ -110,6 +110,29 @@ class TestURLPredictionAPI(unittest.TestCase):
         self.assertEqual(res["class_id"], 0)
         self.assertIsNotNone(res["model_score"])
 
+    def test_predict_url_defaults_to_strict_mode_when_allow_heuristics_omitted(self):
+        # When allow_heuristics is not supplied in the API payload, it must default to False
+        response = self.client.post("/predict-url", json={"url": "https://example.com", "fetch_network": False})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "unsupported_features")
+        self.assertEqual(data["feature_coverage"], "incomplete")
+        self.assertIsNone(data["prediction"])
+        self.assertIsNone(data["class_id"])
+        self.assertGreater(len(data["unsupported_features"]), 0)
+
+    def test_testsafebrowsing_url_regression_rejects_speculative_prediction(self):
+        # Target fixture URL must not emit a false legitimate prediction under default strict settings
+        response = self.client.post(
+            "/predict-url",
+            json={"url": "https://testsafebrowsing.appspot.com/s/phishing.html", "fetch_network": False},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "unsupported_features")
+        self.assertEqual(data["feature_coverage"], "incomplete")
+        self.assertIsNone(data["prediction"])
+
 
 if __name__ == "__main__":
     unittest.main()

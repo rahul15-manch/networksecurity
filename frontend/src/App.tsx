@@ -15,7 +15,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'analyze' | 'metrics' | 'architecture'>('analyze');
   const [features, setFeatures] = useState<PhishingFeatures>(PRESETS.phishing.features);
   const [urlInput, setUrlInput] = useState<string>('https://secure-login.apple-account-verification.com/auth');
-  const [allowHeuristics, setAllowHeuristics] = useState<boolean>(true);
+  const [allowHeuristics, setAllowHeuristics] = useState<boolean>(false);
   const [result, setResult] = useState<UnifiedResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);

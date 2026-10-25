@@ -108,6 +108,26 @@ describe('API Client Service', () => {
     expect(res.feature_coverage).toBe('heuristic');
   });
 
+  it('predictURL defaults allow_heuristics to false when omitted', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((_url, options) => {
+      const body = JSON.parse(options.body);
+      expect(body.allow_heuristics).toBe(false);
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          status: 'unsupported_features',
+          feature_coverage: 'incomplete',
+          unsupported_features: ['web_traffic', 'Page_Rank'],
+        }),
+      });
+    });
+
+    const res = await predictURL({ url: 'https://example.com' });
+    expect(res.status).toBe('unsupported_features');
+    expect(res.feature_coverage).toBe('incomplete');
+  });
+
   it('predictURL handles SSRF error response', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

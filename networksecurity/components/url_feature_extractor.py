@@ -162,6 +162,7 @@ Features Capability Map & Documentation:
 """
 
 import datetime
+import gzip
 import html.parser
 import http.client
 import ipaddress
@@ -171,6 +172,7 @@ import socket
 import ssl
 import sys
 import urllib.parse
+import zlib
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
@@ -365,6 +367,7 @@ class SimpleHTMLFeatureParser(html.parser.HTMLParser):
         self.has_disabled_rightclick: bool = False
         self.has_popup_prompt: bool = False
         self.has_hidden_iframe: bool = False
+        self.has_password_field: bool = False
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]):
         attr_dict = {k.lower(): (v or "") for k, v in attrs}
@@ -416,6 +419,13 @@ class SimpleHTMLFeatureParser(html.parser.HTMLParser):
 
             if frameborder == "0" or "display:none" in style or "visibility:hidden" in style or width in ("0", "0px") or height in ("0", "0px"):
                 self.has_hidden_iframe = True
+
+        # Input password fields (credential forms)
+        if tag == "input":
+            input_type = attr_dict.get("type", "").lower()
+            input_name = attr_dict.get("name", "").lower()
+            if input_type == "password" or "password" in input_name or "passwd" in input_name:
+                self.has_password_field = True
 
         # Check inline JS attributes
         for k, v in attr_dict.items():
@@ -631,6 +641,19 @@ class URLFeatureExtractor:
                 if len(body_bytes) > self.max_content_bytes:
                     body_bytes = body_bytes[:self.max_content_bytes]
 
+                # Decompress HTTP payload if Content-Encoding is gzip or deflate
+                content_encoding = response.getheader("Content-Encoding", "").lower()
+                if "gzip" in content_encoding or body_bytes[:2] == b"\x1f\x8b":
+                    try:
+                        body_bytes = gzip.decompress(body_bytes)
+                    except Exception as e:
+                        logging.warning(f"Failed to decompress gzip content: {e}")
+                elif "deflate" in content_encoding or (len(body_bytes) > 2 and body_bytes[:2] in (b"\x78\x9c", b"\x78\x01", b"\x78\xda")):
+                    try:
+                        body_bytes = zlib.decompress(body_bytes)
+                    except Exception as e:
+                        logging.warning(f"Failed to decompress deflate content: {e}")
+
                 html_text = body_bytes.decode("utf-8", errors="replace")
                 return html_text, redirect_count, None
 
@@ -742,6 +765,9 @@ class URLFeatureExtractor:
                 features["SFH"] = 0
             else:
                 features["SFH"] = 1
+        elif parser.has_password_field:
+            # Credential or password inputs present without declaring a server form handler
+            features["SFH"] = -1
         else:
             features["SFH"] = 1
 
@@ -780,7 +806,7 @@ class URLFeatureExtractor:
     def extract_features(
         self,
         url: str,
-        allow_heuristics: bool = True,
+        allow_heuristics: bool = False,
         fetch_network: bool = True,
         mock_html: Optional[str] = None,
         mock_dns: Optional[bool] = None,

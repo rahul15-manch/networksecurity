@@ -72,7 +72,7 @@ class PredictionPipeline:
     def predict_url(
         self,
         url: str,
-        allow_heuristics: bool = True,
+        allow_heuristics: bool = False,
         fetch_network: bool = True,
         mock_html: str = None,
         mock_dns: bool = None,

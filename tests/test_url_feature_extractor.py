@@ -1,4 +1,5 @@
 import unittest
+import urllib.parse
 from unittest.mock import patch, MagicMock
 from networksecurity.components.url_feature_extractor import (
     URLFeatureExtractor,
@@ -283,6 +284,61 @@ class TestFeatureVectorIntegrity(unittest.TestCase):
         self.assertTrue(len(res["unsupported_features"]) > 0)
         self.assertIn("web_traffic", res["unsupported_features"])
         self.assertIn("Page_Rank", res["unsupported_features"])
+
+    def test_default_heuristics_is_false_in_extractor(self):
+        # Default extract_features call without allow_heuristics should default to False (strict mode)
+        res = self.extractor.extract_features("https://example.com", fetch_network=False)
+        self.assertEqual(res["feature_coverage"], "incomplete")
+        self.assertTrue(len(res["unsupported_features"]) > 0)
+
+    def test_password_field_without_sfh_sets_phishing_indicator(self):
+        # A page containing password/credential fields without a declared server form action
+        sample_html = "<div><label>Username</label><input type='text'/></div><div><label>Password</label><input type='password'/></div>"
+        res = self.extractor.extract_features(
+            "https://example.com/login",
+            allow_heuristics=True,
+            fetch_network=False,
+            mock_html=sample_html,
+            mock_dns=True,
+        )
+        self.assertEqual(res["features"]["SFH"], -1)
+
+    def test_safe_fetch_page_decompresses_gzip_content(self):
+        import gzip
+        raw_html = b"<!DOCTYPE html><html><body><input type='password' name='passwd'/></body></html>"
+        gzipped_payload = gzip.compress(raw_html)
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        def mock_getheader(h, default=""):
+            hl = h.lower()
+            if hl == "content-encoding":
+                return "gzip"
+            if hl == "content-type":
+                return "text/html; charset=utf-8"
+            return default
+
+        mock_resp.getheader.side_effect = mock_getheader
+        mock_resp.read.return_value = gzipped_payload
+
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
+            with patch("networksecurity.components.url_feature_extractor.validate_and_sanitize_url", return_value={"scheme": "https", "hostname": "example.com", "port": 443, "path": "/test", "target_ip": "93.184.216.34", "parsed": urllib.parse.urlparse("https://example.com/test")}):
+                html, redirects, err = self.extractor.safe_fetch_page("https://example.com/test", "example.com")
+                self.assertIsNotNone(html)
+                self.assertIn("passwd", html)
+                self.assertIsNone(err)
+
+    def test_safebrowsing_test_fixture_refuses_unsupported_prediction_in_strict_mode(self):
+        # Regression test for testsafebrowsing fixture URL under default strict mode
+        res = self.extractor.extract_features(
+            "https://testsafebrowsing.appspot.com/s/phishing.html",
+            fetch_network=False,
+        )
+        self.assertEqual(res["feature_coverage"], "incomplete")
+        self.assertTrue(len(res["unsupported_features"]) > 0)
 
 
 if __name__ == "__main__":

@@ -93,7 +93,7 @@ class BatchPredictionResponse(BaseModel):
 
 class URLPredictionRequest(BaseModel):
     url: str = Field(..., description="Target web URL to evaluate (must use http or https scheme)")
-    allow_heuristics: bool = Field(True, description="Whether to apply documented baseline defaults for retired third-party services")
+    allow_heuristics: bool = Field(False, description="Whether to apply documented baseline defaults for retired third-party services")
     fetch_network: bool = Field(True, description="Whether to probe DNS/TLS and fetch HTML over the network with SSRF protection")
 
 

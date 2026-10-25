@@ -130,7 +130,7 @@ export async function predictURL(request: URLPredictionRequest): Promise<URLPred
       },
       body: JSON.stringify({
         url: request.url,
-        allow_heuristics: request.allow_heuristics ?? true,
+        allow_heuristics: request.allow_heuristics ?? false,
         fetch_network: request.fetch_network ?? true,
       }),
     });
