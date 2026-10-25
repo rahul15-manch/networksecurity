@@ -98,15 +98,21 @@ class URLPredictionRequest(BaseModel):
 
 
 class URLPredictionResponse(BaseModel):
-    status: str = Field(..., description="Execution status: 'success' or 'unsupported_features'")
+    status: str = Field(..., description="Execution status: 'success', 'uncertain', or 'unsupported_features'")
     url: str = Field(..., description="Target evaluated URL")
-    prediction: Optional[str] = Field(None, description="Model prediction: 'phishing' or 'legitimate' (or None if incomplete)")
+    prediction: Optional[str] = Field(None, description="Model prediction: 'phishing', 'legitimate', 'uncertain' (or None if incomplete)")
     class_id: Optional[int] = Field(None, description="Binary class ID: 0 (phishing) or 1 (legitimate)")
     model_score: Optional[float] = Field(None, description="Estimated legitimate class probability (0.0 to 1.0)")
+    risk_tier: Optional[str] = Field(None, description="Evaluated risk tier based on evidence and feature coverage")
     feature_coverage: str = Field(..., description="Feature completeness: 'complete', 'heuristic', or 'incomplete'")
+    is_heuristic: bool = Field(False, description="Whether heuristic baseline values were used for any feature")
+    observed_count: int = Field(0, description="Count of features directly observed or verified")
+    estimated_count: int = Field(0, description="Count of features estimated using documented heuristics")
+    missing_count: int = Field(0, description="Count of missing features")
     extracted_count: int = Field(..., description="Number of extracted features")
     total_expected: int = Field(30, description="Total features required by model (30)")
     features: dict = Field(default_factory=dict, description="Extracted 30-feature vector")
+    feature_details: dict = Field(default_factory=dict, description="Per-feature status, evidence source, and explanation")
     stages: dict = Field(default_factory=dict, description="Progress and details for each extraction stage")
     unsupported_features: List[str] = Field(default_factory=list, description="List of features requiring unavailable third parties")
     warnings: List[str] = Field(default_factory=list, description="Security notes and baseline assumptions")

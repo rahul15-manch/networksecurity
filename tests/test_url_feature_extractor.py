@@ -339,6 +339,70 @@ class TestFeatureVectorIntegrity(unittest.TestCase):
         )
         self.assertEqual(res["feature_coverage"], "incomplete")
         self.assertTrue(len(res["unsupported_features"]) > 0)
+        self.assertGreater(res["missing_count"], 0)
+
+    def test_feature_status_and_evidence_tracking(self):
+        # Verify feature_details tracks status, evidence_source, and explanation
+        res = self.extractor.extract_features(
+            "https://example.com",
+            allow_heuristics=True,
+            fetch_network=False,
+        )
+        details = res["feature_details"]
+        self.assertEqual(len(details), 30)
+        for feat_name, meta in details.items():
+            self.assertIn("status", meta)
+            self.assertIn("value", meta)
+            self.assertIn("evidence_source", meta)
+            self.assertIn("explanation", meta)
+            self.assertIn(meta["status"], ["observed", "externally_verified", "estimated", "missing"])
+
+        # Lexical features must be observed
+        self.assertEqual(details["URL_Length"]["status"], "observed")
+        self.assertEqual(details["having_IP_Address"]["status"], "observed")
+
+        # External intel features in heuristic mode must be estimated
+        self.assertEqual(details["web_traffic"]["status"], "estimated")
+        self.assertEqual(details["Page_Rank"]["status"], "estimated")
+        self.assertEqual(details["Statistical_report"]["status"], "estimated")
+
+    def test_missing_external_features_receive_neutral_defaults_not_optimistic_ones(self):
+        res = self.extractor.extract_features(
+            "https://example.com",
+            allow_heuristics=True,
+            fetch_network=False,
+        )
+        feats = res["features"]
+        # Statistical_report must NOT be optimistically 1 (safe); neutral baseline is 0
+        self.assertEqual(feats["Statistical_report"], 0)
+        # Google_Index must NOT be optimistically 1; neutral baseline is 0
+        self.assertEqual(feats["Google_Index"], 0)
+        # age_of_domain neutral baseline is 0
+        self.assertEqual(feats["age_of_domain"], 0)
+        # web_traffic neutral baseline is 0
+        self.assertEqual(feats["web_traffic"], 0)
+        # Page_Rank neutral baseline is -1 (unranked)
+        self.assertEqual(feats["Page_Rank"], -1)
+
+    def test_dom_elements_absent_receive_neutral_baselines_not_legitimate_credit(self):
+        # Empty page with 0 anchors, 0 media, 0 favicon must NOT get 1 (legitimate)
+        empty_html = "<html><body><p>Just text</p></body></html>"
+        res = self.extractor.extract_features(
+            "https://example.com",
+            allow_heuristics=True,
+            fetch_network=False,
+            mock_html=empty_html,
+            mock_dns=True,
+        )
+        feats = res["features"]
+        details = res["feature_details"]
+        # When 0 anchors exist, URL_of_Anchor must be 0 (neutral), NOT 1 (legitimate)
+        self.assertEqual(feats["URL_of_Anchor"], 0)
+        self.assertEqual(details["URL_of_Anchor"]["status"], "estimated")
+        # Request_URL with 0 media must be 0 (neutral), NOT 1
+        self.assertEqual(feats["Request_URL"], 0)
+        # Favicon with 0 favicon tags must be 0 (neutral), NOT 1
+        self.assertEqual(feats["Favicon"], 0)
 
 
 if __name__ == "__main__":

@@ -186,7 +186,14 @@ class TestModelTrainerPipelineIntegration(unittest.TestCase):
 
     def test_initiate_model_trainer_end_to_end(self):
         """Verify model trainer executes CV selection, evaluates on test once, and produces artifact."""
-        artifact = self.trainer.initiate_model_trainer()
+        orig_save = save_object
+        def safe_save(path, obj):
+            if path == "final_model/model.pkl":
+                return
+            return orig_save(path, obj)
+
+        with patch("networksecurity.components.model_trainer.save_object", side_effect=safe_save):
+            artifact = self.trainer.initiate_model_trainer()
 
         self.assertIsInstance(artifact, ModelTrainerArtifact)
         self.assertTrue(os.path.exists(artifact.trained_model_file_path))

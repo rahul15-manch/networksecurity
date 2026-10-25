@@ -174,8 +174,15 @@ class NetworkModel:
                 label = CLASS_LABEL_MAPPING.get(class_id_int, "unknown")
                 score = None
                 if probabilities is not None:
-                    # Model probability of legitimate class (class 1)
-                    score = float(probabilities[i, 1]) if probabilities.shape[1] > 1 else float(probabilities[i, 0])
+                    # Dynamically look up class 1 index via classes_ if available
+                    if hasattr(self.model, "classes_"):
+                        classes_list = [int(c) for c in self.model.classes_]
+                        if 1 in classes_list:
+                            score = float(probabilities[i, classes_list.index(1)])
+                        else:
+                            score = float(probabilities[i, 1]) if probabilities.shape[1] > 1 else float(probabilities[i, 0])
+                    else:
+                        score = float(probabilities[i, 1]) if probabilities.shape[1] > 1 else float(probabilities[i, 0])
 
                 results.append({
                     "prediction": label,

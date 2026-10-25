@@ -124,29 +124,78 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     );
   }
 
-  const isPhishing = String(result.prediction).toLowerCase() === 'phishing' || result.class_id === 0;
-  const legitimateProb = result.model_score !== null ? (result.model_score * 100) : null;
-  const phishingProb = legitimateProb !== null ? (100 - legitimateProb) : null;
+  const isUncertain =
+    result.status === 'uncertain' ||
+    result.prediction === 'uncertain' ||
+    result.risk_tier === 'SUSPICIOUS / UNVERIFIED';
+
+  const isPhishing =
+    !isUncertain &&
+    (String(result.prediction).toLowerCase() === 'phishing' || result.class_id === 0);
+
+  const isHeuristicEstimate =
+    !isUncertain &&
+    !isPhishing &&
+    Boolean(
+      result.is_heuristic ||
+      result.feature_coverage === 'heuristic' ||
+      (result.estimated_count !== undefined && result.estimated_count > 0)
+    );
+
+  const isVerifiedLegitimate = !isUncertain && !isPhishing && !isHeuristicEstimate;
+
+  const legitimateProb = result.model_score !== null ? result.model_score * 100 : null;
+  const phishingProb = legitimateProb !== null ? 100 - legitimateProb : null;
+
+  // Visual styling variants
+  let borderClass = 'border-[#10B981]/50 shadow-[0_0_25px_-5px_rgba(16,185,129,0.2)]';
+  let iconWrapperClass = 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]';
+  let badgeClass = 'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30';
+  let outcomeTitle = 'Legitimate Safe Signature';
+  let riskTierLabel = result.risk_tier || 'LOW RISK';
+
+  if (isUncertain) {
+    borderClass = 'border-[#F59E0B] shadow-[0_0_25px_-5px_rgba(245,158,11,0.3)]';
+    iconWrapperClass = 'bg-[#F59E0B]/20 border-[#F59E0B] text-[#F59E0B]';
+    badgeClass = 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40';
+    outcomeTitle = 'Uncertain / Suspicious Risk Detected';
+    riskTierLabel = result.risk_tier || 'SUSPICIOUS / UNVERIFIED';
+  } else if (isPhishing) {
+    borderClass = 'border-[#DC2626] shadow-glow-red';
+    iconWrapperClass = 'bg-[#DC2626]/20 border-[#DC2626] text-[#DC2626]';
+    badgeClass = 'bg-[#DC2626]/20 text-[#EF4444] border border-[#DC2626]/40';
+    outcomeTitle = 'Phishing Malicious Signature';
+    riskTierLabel = result.risk_tier || 'HIGH RISK';
+  } else if (isHeuristicEstimate) {
+    // Crucial requirement: NEVER show green safe indicator for heuristic predictions
+    borderClass = 'border-[#F59E0B]/60 shadow-[0_0_20px_-5px_rgba(245,158,11,0.2)]';
+    iconWrapperClass = 'bg-[#F59E0B]/20 border-[#F59E0B] text-[#F59E0B]';
+    badgeClass = 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40';
+    outcomeTitle = 'Estimated Legitimate (Heuristic Baseline)';
+    riskTierLabel = result.risk_tier || 'ESTIMATED (UNVERIFIED)';
+  } else if (isVerifiedLegitimate) {
+    borderClass = 'border-[#10B981]/50 shadow-[0_0_25px_-5px_rgba(16,185,129,0.2)]';
+    iconWrapperClass = 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]';
+    badgeClass = 'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30';
+    outcomeTitle = 'Legitimate Safe Signature';
+    riskTierLabel = result.risk_tier || 'LOW RISK';
+  }
 
   return (
-    <div
-      className={`p-6 rounded-xl bg-[#171717] border shadow-card-dark transition-all ${
-        isPhishing
-          ? 'border-[#DC2626] shadow-glow-red'
-          : 'border-[#10B981]/50 shadow-[0_0_25px_-5px_rgba(16,185,129,0.2)]'
-      }`}
-    >
+    <div className={`p-6 rounded-xl bg-[#171717] border shadow-card-dark transition-all ${borderClass}`}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-5 border-b border-[#303030] gap-4">
         {/* Classification Outcome */}
         <div className="flex items-center space-x-3">
-          <div
-            className={`flex items-center justify-center w-12 h-12 rounded-lg border ${
-              isPhishing
-                ? 'bg-[#DC2626]/20 border-[#DC2626] text-[#DC2626]'
-                : 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]'
-            }`}
-          >
-            {isPhishing ? <ShieldAlert className="w-7 h-7" /> : <ShieldCheck className="w-7 h-7" />}
+          <div className={`flex items-center justify-center w-12 h-12 rounded-lg border ${iconWrapperClass}`}>
+            {isUncertain ? (
+              <AlertTriangle className="w-7 h-7" />
+            ) : isPhishing ? (
+              <ShieldAlert className="w-7 h-7" />
+            ) : isHeuristicEstimate ? (
+              <AlertCircle className="w-7 h-7" />
+            ) : (
+              <ShieldCheck className="w-7 h-7" />
+            )}
           </div>
           <div>
             <div className="flex items-center space-x-2">
@@ -155,16 +204,20 @@ export const ResultCard: React.FC<ResultCardProps> = ({
               </span>
               <span
                 className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
-                  isPhishing
+                  isUncertain
+                    ? 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40'
+                    : isPhishing
                     ? 'bg-[#DC2626] text-white'
+                    : isHeuristicEstimate
+                    ? 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40'
                     : 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
                 }`}
               >
-                Class ID: {result.class_id}
+                {isUncertain ? 'Class ID: 1 (Uncertain)' : `Class ID: ${result.class_id}`}
               </span>
             </div>
             <h2 className="text-2xl font-bold tracking-tight text-[#F5F5F5] mt-0.5">
-              {isPhishing ? 'Phishing Malicious Signature' : 'Legitimate Safe Signature'}
+              {outcomeTitle}
             </h2>
           </div>
         </div>
@@ -172,14 +225,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
         {/* Risk Badge */}
         <div className="flex sm:flex-col sm:items-end justify-between items-center text-right">
           <span className="text-xs text-[#A3A3A3] font-mono">Assessed Risk Tier</span>
-          <span
-            className={`text-sm font-bold font-mono px-2.5 py-1 rounded ${
-              isPhishing
-                ? 'bg-[#DC2626]/20 text-[#EF4444] border border-[#DC2626]/40'
-                : 'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30'
-            }`}
-          >
-            {isPhishing ? 'HIGH RISK' : 'LOW RISK'}
+          <span className={`text-sm font-bold font-mono px-2.5 py-1 rounded ${badgeClass}`}>
+            {riskTierLabel}
           </span>
         </div>
       </div>
@@ -197,15 +244,59 @@ export const ResultCard: React.FC<ResultCardProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-[#A3A3A3]">Feature Coverage:</span>
-            <span className={`px-2 py-0.5 rounded uppercase font-bold text-[10px] ${
-              result.feature_coverage === 'complete'
-                ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
-                : 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40'
-            }`}>
-              {result.feature_coverage === 'complete' ? '100% Complete' : 'Heuristic Baseline (UCI Standard)'}
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center space-x-2">
+              <span className="text-[#A3A3A3]">Feature Coverage:</span>
+              <span
+                className={`px-2 py-0.5 rounded uppercase font-bold text-[10px] ${
+                  result.feature_coverage === 'complete'
+                    ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
+                    : 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40'
+                }`}
+              >
+                {result.feature_coverage === 'complete' ? '100% Complete' : 'Heuristic Baseline'}
+              </span>
+            </div>
+
+            {/* Evidence Counts */}
+            <div className="flex items-center space-x-2 text-[#A3A3A3]">
+              <span className="text-[#F5F5F5] font-semibold">
+                {result.observed_count ?? 23}
+              </span>{' '}
+              observed
+              <span>•</span>
+              <span className="text-[#F59E0B] font-semibold">
+                {result.estimated_count ?? (result.feature_coverage === 'heuristic' ? 7 : 0)}
+              </span>{' '}
+              estimated
+              {result.missing_count ? (
+                <>
+                  <span>•</span>
+                  <span className="text-[#EF4444] font-semibold">{result.missing_count}</span> missing
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actionable Message / Guidance if present */}
+      {result.message && (
+        <div
+          className={`mt-4 p-3 rounded-lg border text-xs font-mono ${
+            isUncertain
+              ? 'bg-[#F59E0B]/10 border-[#F59E0B]/40 text-[#F59E0B]'
+              : isHeuristicEstimate
+              ? 'bg-[#111111] border-[#F59E0B]/30 text-[#A3A3A3]'
+              : 'bg-[#111111] border-[#303030] text-[#A3A3A3]'
+          }`}
+        >
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#F59E0B]" />
+            <div className="flex-1">
+              <span className="font-semibold block text-[#F5F5F5]">Analysis Notice:</span>
+              <p className="mt-0.5 leading-relaxed">{result.message}</p>
+            </div>
           </div>
         </div>
       )}
@@ -214,7 +305,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
       {result.model_score !== null && legitimateProb !== null && phishingProb !== null && (
         <div className="py-5 border-b border-[#303030] space-y-3">
           <div className="flex justify-between items-center text-xs font-mono">
-            <span className="text-[#A3A3A3]">Estimated Legitimate Likelihood:</span>
+            <span className="text-[#A3A3A3]">Model Calculated Legitimate Probability:</span>
             <span className="text-[#F5F5F5] font-semibold">{legitimateProb.toFixed(1)}%</span>
           </div>
 
@@ -245,6 +336,19 @@ export const ResultCard: React.FC<ResultCardProps> = ({
         </div>
       )}
 
+      {/* Warnings breakdown if present */}
+      {result.warnings && result.warnings.length > 0 && (
+        <div className="py-3 border-b border-[#303030] space-y-1.5 text-xs font-mono">
+          <span className="text-xs font-semibold text-[#A3A3A3] block">Evidence Notes & Warnings:</span>
+          {result.warnings.map((warn, i) => (
+            <div key={i} className="flex items-start space-x-2 text-[11px] text-[#A3A3A3]">
+              <span className="text-[#F59E0B]">•</span>
+              <span>{warn}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Extraction Stage Breakdown Accordion */}
       {result.stages && (
         <div className="py-3 border-b border-[#303030]">
@@ -272,13 +376,15 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                       {stageInfo.details || stageInfo.reason || 'Completed'}
                     </span>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase flex-shrink-0 ${
-                    stageInfo.status === 'success'
-                      ? 'bg-[#10B981]/20 text-[#10B981]'
-                      : stageInfo.status === 'heuristic_baseline'
-                      ? 'bg-[#F59E0B]/20 text-[#F59E0B]'
-                      : 'bg-[#DC2626]/20 text-[#EF4444]'
-                  }`}>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase flex-shrink-0 ${
+                      stageInfo.status === 'success'
+                        ? 'bg-[#10B981]/20 text-[#10B981]'
+                        : stageInfo.status === 'heuristic_baseline'
+                        ? 'bg-[#F59E0B]/20 text-[#F59E0B]'
+                        : 'bg-[#DC2626]/20 text-[#EF4444]'
+                    }`}
+                  >
                     {stageInfo.count ? `${stageInfo.count} Feats` : stageInfo.status}
                   </span>
                 </div>
@@ -316,7 +422,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
       <div className="mt-4 p-3 rounded-lg bg-[#111111] border border-[#303030] flex items-start space-x-2 text-xs text-[#A3A3A3]">
         <Info className="w-4 h-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
         <p>
-          <strong className="text-[#F5F5F5]">Security Notice:</strong> Predictions are statistical model estimates based on 30 engineered features, not guarantees of domain safety. Always inspect SSL certificates and authentication flows before sharing sensitive credentials.
+          <strong className="text-[#F5F5F5]">Security Notice:</strong> Predictions are statistical model estimates based on 30 engineered features, not guarantees of domain safety. Imputed features are estimates and do not represent verified safe signatures. Always inspect SSL certificates and authentication flows before sharing sensitive credentials.
         </p>
       </div>
     </div>

@@ -133,6 +133,66 @@ class TestURLPredictionAPI(unittest.TestCase):
         self.assertEqual(data["feature_coverage"], "incomplete")
         self.assertIsNone(data["prediction"])
 
+    def test_testsafebrowsing_heuristic_mode_returns_uncertain_suspicious_verdict(self):
+        # Target fixture URL in heuristic mode with credential form must return uncertain / suspicious
+        mock_html = """<!DOCTYPE html>
+        <html>
+        <head><title>Phishing Test</title></head>
+        <body>
+        <h1>Phishing test page</h1>
+        <form method="POST">
+          <input type="password" name="pwd" />
+          <input type="submit" value="Login" />
+        </form>
+        </body>
+        </html>"""
+        pipeline = PredictionPipeline()
+        res = pipeline.predict_url(
+            url="https://testsafebrowsing.appspot.com/s/phishing.html",
+            allow_heuristics=True,
+            fetch_network=False,
+            mock_html=mock_html,
+            mock_dns=True,
+        )
+        self.assertEqual(res["status"], "uncertain")
+        self.assertEqual(res["prediction"], "uncertain")
+        self.assertEqual(res["risk_tier"], "SUSPICIOUS / UNVERIFIED")
+        self.assertTrue(res["is_heuristic"])
+        self.assertNotEqual(res["prediction"], "legitimate")
+        self.assertGreater(res["estimated_count"], 0)
+        self.assertIn("SFH", str(res["warnings"]))
+
+    def test_api_discloses_heuristic_mode_and_evidence_counts(self):
+        response = self.client.post(
+            "/predict-url",
+            json={"url": "https://example.com", "allow_heuristics": True, "fetch_network": False},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["is_heuristic"])
+        self.assertIn("observed_count", data)
+        self.assertIn("estimated_count", data)
+        self.assertIn("missing_count", data)
+        self.assertGreater(data["observed_count"], 0)
+        self.assertGreater(data["estimated_count"], 0)
+        self.assertEqual(data["missing_count"], 0)
+        self.assertIn("feature_details", data)
+        self.assertEqual(len(data["feature_details"]), 30)
+
+    def test_malformed_html_and_missing_dom_handled_safely(self):
+        malformed_html = "<<<not valid html>>> <form action='> <a href="
+        pipeline = PredictionPipeline()
+        res = pipeline.predict_url(
+            url="https://example.com/broken",
+            allow_heuristics=True,
+            fetch_network=False,
+            mock_html=malformed_html,
+            mock_dns=True,
+        )
+        self.assertIn(res["status"], ("success", "uncertain"))
+        self.assertEqual(len(res["features"]), 30)
+        self.assertEqual(res["features"]["URL_of_Anchor"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

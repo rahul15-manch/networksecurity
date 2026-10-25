@@ -55,15 +55,21 @@ export interface URLPredictionRequest {
 }
 
 export interface URLPredictionResponse {
-  status: 'success' | 'unsupported_features';
+  status: 'success' | 'uncertain' | 'unsupported_features' | string;
   url: string;
-  prediction: 'phishing' | 'legitimate' | string | null;
+  prediction: 'phishing' | 'legitimate' | 'uncertain' | string | null;
   class_id: 0 | 1 | null;
   model_score: number | null;
+  risk_tier?: string | null;
   feature_coverage: 'complete' | 'heuristic' | 'incomplete';
+  is_heuristic?: boolean;
+  observed_count?: number;
+  estimated_count?: number;
+  missing_count?: number;
   extracted_count: number;
   total_expected: number;
   features: Record<string, number>;
+  feature_details?: Record<string, any>;
   stages: Record<string, ExtractionStageInfo>;
   unsupported_features: string[];
   warnings: string[];
@@ -73,7 +79,13 @@ export interface URLPredictionResponse {
 export type UnifiedResult = (PredictionResponse | URLPredictionResponse) & {
   status?: string;
   url?: string;
+  risk_tier?: string | null;
   feature_coverage?: string;
+  is_heuristic?: boolean;
+  observed_count?: number;
+  estimated_count?: number;
+  missing_count?: number;
+  feature_details?: Record<string, any>;
   stages?: Record<string, ExtractionStageInfo>;
   unsupported_features?: string[];
   warnings?: string[];

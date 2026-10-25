@@ -100,10 +100,16 @@ class PredictionPipeline:
                     "prediction": None,
                     "class_id": None,
                     "model_score": None,
+                    "risk_tier": "INCOMPLETE ANALYSIS",
                     "feature_coverage": coverage,
+                    "is_heuristic": False,
+                    "observed_count": extraction_res.get("observed_count", 0),
+                    "estimated_count": extraction_res.get("estimated_count", 0),
+                    "missing_count": extraction_res.get("missing_count", len(extraction_res["unsupported_features"])),
                     "extracted_count": extraction_res["extracted_count"],
                     "total_expected": extraction_res["total_expected"],
                     "features": extraction_res["features"],
+                    "feature_details": extraction_res.get("feature_details", {}),
                     "stages": extraction_res["stages"],
                     "unsupported_features": extraction_res["unsupported_features"],
                     "warnings": extraction_res["warnings"],
@@ -120,19 +126,79 @@ class PredictionPipeline:
                 raise ValueError("Inference returned empty results for URL feature vector.")
 
             primary = preds[0]
+            class_id = primary["class_id"]
+            model_score = primary["model_score"]
+            prediction_label = primary["prediction"]
+            observed_count = extraction_res.get("observed_count", 0)
+            estimated_count = extraction_res.get("estimated_count", 0)
+            missing_count = extraction_res.get("missing_count", 0)
+            feats = extraction_res["features"]
+            warnings = list(extraction_res["warnings"])
+            status = "success"
+            risk_tier = "LOW RISK"
+            is_heuristic = estimated_count > 0 or coverage == "heuristic"
+            message = None
+
+            if class_id == 0:
+                prediction_label = "phishing"
+                risk_tier = "HIGH RISK"
+            else:
+                # Model predicts legitimate (class 1)
+                if is_heuristic:
+                    # Check for suspicious evidence that invalidates optimistic legitimate verdicts
+                    suspicious_signals = []
+                    if feats.get("SFH") == -1:
+                        suspicious_signals.append("Missing, empty, or external form action (SFH) with credential inputs detected.")
+                    if feats.get("SSLfinal_State") == -1:
+                        suspicious_signals.append("Untrusted, invalid, or missing SSL/TLS certificate.")
+                    if feats.get("having_IP_Address") == -1:
+                        suspicious_signals.append("Direct IP address used instead of domain name.")
+                    if feats.get("Submitting_to_email") == -1:
+                        suspicious_signals.append("Form submission configured to send data via email.")
+                    if model_score is not None and model_score < 0.75:
+                        suspicious_signals.append(f"Model prediction confidence for legitimate class is weak ({model_score:.1%}).")
+
+                    if suspicious_signals:
+                        status = "uncertain"
+                        prediction_label = "uncertain"
+                        risk_tier = "SUSPICIOUS / UNVERIFIED"
+                        warnings.extend(suspicious_signals)
+                        message = (
+                            "Suspicious indicator(s) detected while external reputation features "
+                            "were imputed with neutral defaults. Legitimate verdict cannot be confirmed without "
+                            "verified external reputation evidence."
+                        )
+                    else:
+                        prediction_label = "legitimate"
+                        risk_tier = "ESTIMATED (UNVERIFIED REPUTATION)"
+                        message = (
+                            "Classified as legitimate based on URL and page characteristics, but external "
+                            "reputation metrics use estimated neutral baselines. Not a verified safe signature."
+                        )
+                else:
+                    prediction_label = "legitimate"
+                    risk_tier = "LOW RISK"
+
             return {
-                "status": "success",
+                "status": status,
                 "url": url,
-                "prediction": primary["prediction"],
-                "class_id": primary["class_id"],
-                "model_score": primary["model_score"],
+                "prediction": prediction_label,
+                "class_id": class_id,
+                "model_score": model_score,
+                "risk_tier": risk_tier,
                 "feature_coverage": coverage,
+                "is_heuristic": is_heuristic,
+                "observed_count": observed_count,
+                "estimated_count": estimated_count,
+                "missing_count": missing_count,
                 "extracted_count": extraction_res["extracted_count"],
                 "total_expected": extraction_res["total_expected"],
                 "features": extraction_res["features"],
+                "feature_details": extraction_res.get("feature_details", {}),
                 "stages": extraction_res["stages"],
-                "unsupported_features": [],
-                "warnings": extraction_res["warnings"],
+                "unsupported_features": extraction_res.get("unsupported_features", []),
+                "warnings": warnings,
+                "message": message,
             }
         except (FileNotFoundError, TypeError, ValueError):
             raise

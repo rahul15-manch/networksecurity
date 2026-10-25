@@ -109,4 +109,66 @@ describe('ResultCard Component', () => {
     expect(screen.getByText(/Legitimate: 94.2%/i)).toBeInTheDocument();
     expect(screen.getByText(/100% Complete/i)).toBeInTheDocument();
   });
+
+  it('renders uncertain suspicious risk badge and notice for suspicious sites in heuristic mode', () => {
+    const mockUncertainResult: UnifiedResult = {
+      status: 'uncertain',
+      url: 'https://testsafebrowsing.appspot.com/s/phishing.html',
+      prediction: 'uncertain',
+      class_id: 1,
+      model_score: 0.78,
+      risk_tier: 'SUSPICIOUS / UNVERIFIED',
+      feature_coverage: 'heuristic',
+      is_heuristic: true,
+      observed_count: 19,
+      estimated_count: 11,
+      missing_count: 0,
+      extracted_count: 30,
+      total_expected: 30,
+      features: {},
+      stages: {},
+      unsupported_features: [],
+      warnings: ['Missing, empty, or external form action (SFH) with credential inputs detected.'],
+      message: 'Suspicious indicator(s) detected while external reputation features were imputed with neutral defaults.',
+    };
+
+    render(<ResultCard result={mockUncertainResult} isLoading={false} error={null} />);
+
+    expect(screen.getByText(/Uncertain \/ Suspicious Risk Detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/SUSPICIOUS \/ UNVERIFIED/i)).toBeInTheDocument();
+    expect(screen.getByText(/19/i)).toBeInTheDocument();
+    expect(screen.getByText(/11/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Legitimate Safe Signature/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/LOW RISK/i)).not.toBeInTheDocument();
+  });
+
+  it('renders estimated legitimate without green safe signature when heuristic mode is used', () => {
+    const mockHeuristicLegit: UnifiedResult = {
+      status: 'success',
+      url: 'https://example.com',
+      prediction: 'legitimate',
+      class_id: 1,
+      model_score: 0.92,
+      risk_tier: 'ESTIMATED (UNVERIFIED REPUTATION)',
+      feature_coverage: 'heuristic',
+      is_heuristic: true,
+      observed_count: 23,
+      estimated_count: 7,
+      missing_count: 0,
+      extracted_count: 30,
+      total_expected: 30,
+      features: {},
+      stages: {},
+      unsupported_features: [],
+      warnings: [],
+      message: 'Classified as legitimate based on URL and page characteristics, but external reputation metrics use estimated neutral baselines.',
+    };
+
+    render(<ResultCard result={mockHeuristicLegit} isLoading={false} error={null} />);
+
+    expect(screen.getByText(/Estimated Legitimate \(Heuristic Baseline\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/ESTIMATED \(UNVERIFIED REPUTATION\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Legitimate Safe Signature/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^LOW RISK$/i)).not.toBeInTheDocument();
+  });
 });

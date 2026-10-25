@@ -238,6 +238,13 @@ STAGE_EXTERNAL_INTEL = [
 ]
 
 
+class FeatureStatus:
+    OBSERVED = "observed"
+    EXTERNALLY_VERIFIED = "externally_verified"
+    ESTIMATED = "estimated"
+    MISSING = "missing"
+
+
 class SSRFSecurityViolation(ValueError):
     """Raised when a URL attempts to target private, loopback, or reserved destinations."""
     pass
@@ -562,7 +569,8 @@ class URLFeatureExtractor:
                                 not_after = datetime.datetime.strptime(not_after_str, "%b %d %H:%M:%S %Y %Z")
                                 not_before = datetime.datetime.strptime(not_before_str, "%b %d %H:%M:%S %Y %Z")
                                 validity_days = (not_after - not_before).days
-                                ssl_state = 1 if validity_days >= 365 else 0
+                                # Modern TLS standards (Let's Encrypt / DigiCert) issue 90-day certificates
+                                ssl_state = 1 if validity_days >= 80 else 0
                             else:
                                 ssl_state = 1
             except ssl.SSLCertVerificationError:
@@ -666,29 +674,56 @@ class URLFeatureExtractor:
         self,
         html_content: Optional[str],
         base_hostname: str,
-        redirect_count: int = 0
-    ) -> Dict[str, int]:
+        redirect_count: int = 0,
+        allow_heuristics: bool = False,
+    ) -> Tuple[Dict[str, Optional[int]], Dict[str, Dict[str, Any]]]:
         """
         Extracts 11 HTML/content features from safely parsed HTML.
+        Returns (features_dict, details_dict).
+        Replaces optimistic defaults with evidence-based status tracking.
         """
-        features: Dict[str, int] = {}
+        features: Dict[str, Optional[int]] = {}
+        details: Dict[str, Dict[str, Any]] = {}
 
         # 19. Redirect: 0 (>1 redirects, phishing in schema), 1 (<=1 redirect, legitimate in schema)
-        features["Redirect"] = 1 if redirect_count <= 1 else 0
+        redir_val = 1 if redirect_count <= 1 else 0
+        features["Redirect"] = redir_val
+        details["Redirect"] = {
+            "name": "Redirect",
+            "value": redir_val,
+            "status": FeatureStatus.OBSERVED,
+            "evidence_source": "http_network",
+            "explanation": f"Observed {redirect_count} HTTP redirect(s)",
+        }
 
-        if not html_content:
-            # HTML unavailable (server offline or non-HTML)
-            features["Favicon"] = 1
-            features["Request_URL"] = 1
-            features["URL_of_Anchor"] = 1
-            features["Links_in_tags"] = 1
-            features["SFH"] = 1
-            features["Submitting_to_email"] = 1
-            features["on_mouseover"] = 1
-            features["RightClick"] = 1
-            features["popUpWidnow"] = 1
-            features["Iframe"] = 1
-            return features
+        html_dom_keys = [
+            "Favicon", "Request_URL", "URL_of_Anchor", "Links_in_tags", "SFH",
+            "Submitting_to_email", "on_mouseover", "RightClick", "popUpWidnow", "Iframe"
+        ]
+
+        if not html_content or not html_content.strip():
+            # HTML unavailable (server offline, non-HTML, or offline mode)
+            for k in html_dom_keys:
+                if allow_heuristics:
+                    val = 0 if k in ("Favicon", "Request_URL", "URL_of_Anchor", "Links_in_tags", "SFH") else 1
+                    features[k] = val
+                    details[k] = {
+                        "name": k,
+                        "value": val,
+                        "status": FeatureStatus.ESTIMATED,
+                        "evidence_source": "heuristic_baseline",
+                        "explanation": "HTML content could not be retrieved; neutral baseline applied",
+                    }
+                else:
+                    features[k] = None
+                    details[k] = {
+                        "name": k,
+                        "value": None,
+                        "status": FeatureStatus.MISSING,
+                        "evidence_source": "none",
+                        "explanation": "HTML content unavailable; feature cannot be observed in strict mode",
+                    }
+            return features, details
 
         parser = SimpleHTMLFeatureParser(base_url=f"http://{base_hostname}", base_hostname=base_hostname)
         try:
@@ -707,23 +742,53 @@ class URLFeatureExtractor:
             except Exception:
                 return False
 
-        # 10. Favicon: -1 if foreign domain, 1 if same domain or relative
+        # 10. Favicon
         if parser.favicons:
             fav_foreign = any(is_foreign_domain(fav) for fav in parser.favicons)
-            features["Favicon"] = -1 if fav_foreign else 1
+            fav_val = -1 if fav_foreign else 1
+            features["Favicon"] = fav_val
+            details["Favicon"] = {
+                "name": "Favicon",
+                "value": fav_val,
+                "status": FeatureStatus.OBSERVED,
+                "evidence_source": "html_dom",
+                "explanation": "Favicon loaded from external foreign domain" if fav_foreign else "Favicon loaded from same domain or relative path",
+            }
         else:
-            features["Favicon"] = 1
+            features["Favicon"] = 0
+            details["Favicon"] = {
+                "name": "Favicon",
+                "value": 0,
+                "status": FeatureStatus.ESTIMATED,
+                "evidence_source": "heuristic_baseline",
+                "explanation": "No favicon link tag declared on page; neutral baseline applied",
+            }
 
-        # 13. Request_URL: -1 if >= 61% foreign media, 1 if < 61%
+        # 13. Request_URL
         total_media = len(parser.media_srcs)
         if total_media > 0:
             foreign_media = sum(1 for src in parser.media_srcs if is_foreign_domain(src))
             media_ratio = (foreign_media / total_media) * 100.0
-            features["Request_URL"] = -1 if media_ratio >= 61.0 else 1
+            req_val = -1 if media_ratio >= 61.0 else 1
+            features["Request_URL"] = req_val
+            details["Request_URL"] = {
+                "name": "Request_URL",
+                "value": req_val,
+                "status": FeatureStatus.OBSERVED,
+                "evidence_source": "html_dom",
+                "explanation": f"Embedded media evaluated: {media_ratio:.1f}% foreign sources ({foreign_media}/{total_media})",
+            }
         else:
-            features["Request_URL"] = 1
+            features["Request_URL"] = 0
+            details["Request_URL"] = {
+                "name": "Request_URL",
+                "value": 0,
+                "status": FeatureStatus.ESTIMATED,
+                "evidence_source": "heuristic_baseline",
+                "explanation": "No embedded media elements (img/video/audio) found on page; neutral baseline applied",
+            }
 
-        # 14. URL_of_Anchor: -1 if > 67%, 0 if 31%-67%, 1 if < 31%
+        # 14. URL_of_Anchor
         total_anchors = len(parser.anchor_hrefs)
         if total_anchors > 0:
             suspicious_anchors = 0
@@ -733,74 +798,168 @@ class URLFeatureExtractor:
                     suspicious_anchors += 1
             anchor_ratio = (suspicious_anchors / total_anchors) * 100.0
             if anchor_ratio > 67.0:
-                features["URL_of_Anchor"] = -1
+                anc_val = -1
             elif 31.0 <= anchor_ratio <= 67.0:
-                features["URL_of_Anchor"] = 0
+                anc_val = 0
             else:
-                features["URL_of_Anchor"] = 1
+                anc_val = 1
+            features["URL_of_Anchor"] = anc_val
+            details["URL_of_Anchor"] = {
+                "name": "URL_of_Anchor",
+                "value": anc_val,
+                "status": FeatureStatus.OBSERVED,
+                "evidence_source": "html_dom",
+                "explanation": f"Anchor links evaluated: {anchor_ratio:.1f}% suspicious or foreign ({suspicious_anchors}/{total_anchors})",
+            }
         else:
-            features["URL_of_Anchor"] = 1
+            features["URL_of_Anchor"] = 0
+            details["URL_of_Anchor"] = {
+                "name": "URL_of_Anchor",
+                "value": 0,
+                "status": FeatureStatus.ESTIMATED,
+                "evidence_source": "heuristic_baseline",
+                "explanation": "No anchor links found on page; neutral baseline applied (not assumed safe)",
+            }
 
-        # 15. Links_in_tags: -1 if > 81%, 0 if 17%-81%, 1 if < 17%
+        # 15. Links_in_tags
         total_tags = len(parser.tag_links)
         if total_tags > 0:
             foreign_tags = sum(1 for lk in parser.tag_links if is_foreign_domain(lk))
             tag_ratio = (foreign_tags / total_tags) * 100.0
             if tag_ratio > 81.0:
-                features["Links_in_tags"] = -1
+                tag_val = -1
             elif 17.0 <= tag_ratio <= 81.0:
-                features["Links_in_tags"] = 0
+                tag_val = 0
             else:
-                features["Links_in_tags"] = 1
+                tag_val = 1
+            features["Links_in_tags"] = tag_val
+            details["Links_in_tags"] = {
+                "name": "Links_in_tags",
+                "value": tag_val,
+                "status": FeatureStatus.OBSERVED,
+                "evidence_source": "html_dom",
+                "explanation": f"Tag links (script/link) evaluated: {tag_ratio:.1f}% foreign ({foreign_tags}/{total_tags})",
+            }
         else:
-            features["Links_in_tags"] = 1
+            features["Links_in_tags"] = 0
+            details["Links_in_tags"] = {
+                "name": "Links_in_tags",
+                "value": 0,
+                "status": FeatureStatus.ESTIMATED,
+                "evidence_source": "heuristic_baseline",
+                "explanation": "No script/link tags found on page; neutral baseline applied",
+            }
 
-        # 16. SFH: -1 if empty or 'about:blank', 0 if foreign domain, 1 if same domain
+        # 16. SFH
         if parser.form_actions:
             has_blank_sfh = any(not a.strip() or a.strip().lower() == "about:blank" for a in parser.form_actions)
             has_foreign_sfh = any(is_foreign_domain(a) for a in parser.form_actions)
             if has_blank_sfh:
-                features["SFH"] = -1
+                sfh_val = -1
+                expl = "Form action is empty or about:blank (phishing indicator)"
             elif has_foreign_sfh:
-                features["SFH"] = 0
+                sfh_val = 0
+                expl = "Form action submits to foreign domain (suspicious)"
             else:
-                features["SFH"] = 1
+                sfh_val = 1
+                expl = "Form action submits to same domain or relative path"
+            features["SFH"] = sfh_val
+            details["SFH"] = {
+                "name": "SFH",
+                "value": sfh_val,
+                "status": FeatureStatus.OBSERVED,
+                "evidence_source": "html_dom",
+                "explanation": expl,
+            }
         elif parser.has_password_field:
-            # Credential or password inputs present without declaring a server form handler
             features["SFH"] = -1
+            details["SFH"] = {
+                "name": "SFH",
+                "value": -1,
+                "status": FeatureStatus.OBSERVED,
+                "evidence_source": "html_dom",
+                "explanation": "Password credential input field present without declaring a server form handler (phishing indicator)",
+            }
         else:
-            features["SFH"] = 1
+            features["SFH"] = 0
+            details["SFH"] = {
+                "name": "SFH",
+                "value": 0,
+                "status": FeatureStatus.ESTIMATED,
+                "evidence_source": "heuristic_baseline",
+                "explanation": "No form elements on page; neutral baseline applied",
+            }
 
-        # 17. Submitting_to_email: -1 if mailto:, 1 if clean
-        features["Submitting_to_email"] = -1 if parser.has_mailto else 1
+        # 17. Submitting_to_email
+        email_val = -1 if parser.has_mailto else 1
+        features["Submitting_to_email"] = email_val
+        details["Submitting_to_email"] = {
+            "name": "Submitting_to_email",
+            "value": email_val,
+            "status": FeatureStatus.OBSERVED,
+            "evidence_source": "html_dom",
+            "explanation": "Detected mailto: action in form or link" if parser.has_mailto else "No mailto: submission found in page content",
+        }
 
-        # 20. on_mouseover: -1 if window.status modified, 1 if clean
-        features["on_mouseover"] = -1 if parser.has_window_status else 1
+        # 20. on_mouseover
+        mo_val = -1 if parser.has_window_status else 1
+        features["on_mouseover"] = mo_val
+        details["on_mouseover"] = {
+            "name": "on_mouseover",
+            "value": mo_val,
+            "status": FeatureStatus.OBSERVED,
+            "evidence_source": "html_dom",
+            "explanation": "Detected window.status manipulation on mouseover" if parser.has_window_status else "No window.status manipulation detected",
+        }
 
-        # 21. RightClick: -1 if right-click disabled, 1 if clean
-        features["RightClick"] = -1 if parser.has_disabled_rightclick else 1
+        # 21. RightClick
+        rc_val = -1 if parser.has_disabled_rightclick else 1
+        features["RightClick"] = rc_val
+        details["RightClick"] = {
+            "name": "RightClick",
+            "value": rc_val,
+            "status": FeatureStatus.OBSERVED,
+            "evidence_source": "html_dom",
+            "explanation": "Detected right-click context menu disabling" if parser.has_disabled_rightclick else "Right-click context menu operates normally",
+        }
 
-        # 22. popUpWidnow: -1 if popup prompt, 1 if clean
-        features["popUpWidnow"] = -1 if parser.has_popup_prompt else 1
+        # 22. popUpWidnow
+        pop_val = -1 if parser.has_popup_prompt else 1
+        features["popUpWidnow"] = pop_val
+        details["popUpWidnow"] = {
+            "name": "popUpWidnow",
+            "value": pop_val,
+            "status": FeatureStatus.OBSERVED,
+            "evidence_source": "html_dom",
+            "explanation": "Detected prompt() or popup prompt window in script" if parser.has_popup_prompt else "No modal prompt window detected",
+        }
 
-        # 23. Iframe: -1 if hidden iframe, 1 if clean
-        features["Iframe"] = -1 if parser.has_hidden_iframe else 1
+        # 23. Iframe
+        if_val = -1 if parser.has_hidden_iframe else 1
+        features["Iframe"] = if_val
+        details["Iframe"] = {
+            "name": "Iframe",
+            "value": if_val,
+            "status": FeatureStatus.OBSERVED,
+            "evidence_source": "html_dom",
+            "explanation": "Detected invisible or hidden iframe element" if parser.has_hidden_iframe else "No hidden iframes detected",
+        }
 
-        return features
+        return features, details
 
     def get_documented_heuristic_features(self, is_accessible: bool = True) -> Dict[str, int]:
         """
-        Supplies documented, justified baseline values from Mohammad et al. (2012)
-        for external/retired services (Alexa Rank, Google PageRank, WHOIS).
+        Supplies documented, evidence-based neutral baselines for external/retired services
+        (Alexa Rank, Google PageRank, WHOIS). Replaces optimistic defaults with neutral values.
         """
         return {
-            "Domain_registeration_length": -1,  # Conservative baseline when WHOIS is unavailable
-            "age_of_domain": 1 if is_accessible else -1,
-            "web_traffic": -1,                 # Alexa service retired by Amazon in May 2022
-            "Page_Rank": -1,                   # Google PageRank API retired in April 2016
-            "Google_Index": 1 if is_accessible else -1,
+            "Domain_registeration_length": -1,  # Conservative WHOIS baseline (<= 1 year)
+            "age_of_domain": 0,                # Neutral domain age (not assumed mature)
+            "web_traffic": 0,                  # Neutral rank tier (Alexa API retired May 2022)
+            "Page_Rank": -1,                   # Low PageRank baseline (Google PageRank API retired April 2016)
+            "Google_Index": 0,                 # Neutral search index status (not assumed indexed)
             "Links_pointing_to_page": 0,       # Neutral backlink count baseline
-            "Statistical_report": 1,           # Clean default (not listed on PhishTank)
+            "Statistical_report": 0,           # Neutral threat intelligence (not assumed clean)
         }
 
     def extract_features(
@@ -813,9 +972,8 @@ class URLFeatureExtractor:
     ) -> Dict[str, Any]:
         """
         Executes complete feature extraction pipeline across all 30 features.
-        Returns structured dictionary with features, stages, coverage, and warnings.
+        Returns structured dictionary with features, feature_details, coverage, and warnings.
         """
-        # Validate URL and enforce SSRF protections
         meta = validate_and_sanitize_url(url, enforce_public_dns=fetch_network)
         hostname = meta["hostname"]
         scheme = meta["scheme"]
@@ -823,17 +981,26 @@ class URLFeatureExtractor:
         parsed = meta["parsed"]
 
         stages_status: Dict[str, Any] = {}
-        features: Dict[str, int] = {}
+        features: Dict[str, Optional[int]] = {}
+        feature_details: Dict[str, Dict[str, Any]] = {}
         warnings: List[str] = []
 
         # Stage 1: URL String (Lexical)
         try:
             lexical_feats = self.extract_lexical_features(url, parsed)
             features.update(lexical_feats)
+            for k, v in lexical_feats.items():
+                feature_details[k] = {
+                    "name": k,
+                    "value": v,
+                    "status": FeatureStatus.OBSERVED,
+                    "evidence_source": "url_lexical",
+                    "explanation": f"Extracted directly from URL string lexical structure (value={v})",
+                }
             stages_status["url_lexical"] = {
                 "status": "success",
                 "count": len(lexical_feats),
-                "details": f"Extracted {len(lexical_feats)} lexical features from URL structure."
+                "details": f"Extracted {len(lexical_feats)} lexical features from URL structure.",
             }
         except Exception as e:
             stages_status["url_lexical"] = {"status": "failed", "error": str(e), "count": 0}
@@ -843,21 +1010,42 @@ class URLFeatureExtractor:
             if mock_dns is not None:
                 dns_feats = {
                     "DNSRecord": 1 if mock_dns else -1,
-                    "SSLfinal_State": 1 if scheme == "https" and mock_dns else -1
+                    "SSLfinal_State": 1 if scheme == "https" and mock_dns else -1,
                 }
+                dns_status = FeatureStatus.OBSERVED
+                dns_source = "network_dns"
             elif fetch_network:
                 dns_feats = self.extract_dns_tls_features(hostname, scheme, port)
+                dns_status = FeatureStatus.OBSERVED
+                dns_source = "network_dns"
             else:
-                # Offline mode: scheme check only
                 dns_feats = {
                     "DNSRecord": 1,
-                    "SSLfinal_State": 1 if scheme == "https" else -1
+                    "SSLfinal_State": 1 if scheme == "https" else -1,
                 }
+                dns_status = FeatureStatus.ESTIMATED
+                dns_source = "heuristic_baseline"
+
             features.update(dns_feats)
+            feature_details["DNSRecord"] = {
+                "name": "DNSRecord",
+                "value": dns_feats["DNSRecord"],
+                "status": dns_status,
+                "evidence_source": dns_source,
+                "explanation": "DNS resolved host address" if dns_feats["DNSRecord"] == 1 else "DNS resolution failed",
+            }
+            feature_details["SSLfinal_State"] = {
+                "name": "SSLfinal_State",
+                "value": dns_feats["SSLfinal_State"],
+                "status": dns_status,
+                "evidence_source": "tls_handshake" if dns_status == FeatureStatus.OBSERVED else dns_source,
+                "explanation": f"TLS certificate validation state ({dns_feats['SSLfinal_State']})",
+            }
+
             stages_status["dns_tls"] = {
                 "status": "success",
                 "count": len(dns_feats),
-                "details": f"DNS resolution: {'resolved' if dns_feats['DNSRecord']==1 else 'failed'}; TLS state: {dns_feats['SSLfinal_State']}."
+                "details": f"DNS resolution: {'resolved' if dns_feats['DNSRecord']==1 else 'failed'}; TLS state: {dns_feats['SSLfinal_State']}.",
             }
         except Exception as e:
             stages_status["dns_tls"] = {"status": "failed", "error": str(e), "count": 0}
@@ -871,21 +1059,24 @@ class URLFeatureExtractor:
             if mock_html is None and fetch_network:
                 html_text, redirect_count, fetch_err = self.safe_fetch_page(url, hostname)
 
-            html_feats = self.extract_html_features(html_text, hostname, redirect_count)
+            html_feats, html_details = self.extract_html_features(
+                html_text, hostname, redirect_count, allow_heuristics=allow_heuristics
+            )
             features.update(html_feats)
+            feature_details.update(html_details)
 
             if fetch_err:
                 warnings.append(f"Webpage fetch notice: {fetch_err}")
                 stages_status["html_content"] = {
                     "status": "partial",
                     "count": len(html_feats),
-                    "details": f"HTML fetch incomplete ({fetch_err}); default content values applied."
+                    "details": f"HTML fetch incomplete ({fetch_err}); neutral baselines applied.",
                 }
             else:
                 stages_status["html_content"] = {
                     "status": "success",
                     "count": len(html_feats),
-                    "details": f"Parsed {len(html_feats)} DOM and behavioral attributes safely."
+                    "details": f"Parsed {len(html_feats)} DOM and behavioral attributes safely.",
                 }
         except Exception as e:
             stages_status["html_content"] = {"status": "failed", "error": str(e), "count": 0}
@@ -895,52 +1086,79 @@ class URLFeatureExtractor:
         if allow_heuristics:
             heuristic_feats = self.get_documented_heuristic_features(is_accessible=is_live)
             features.update(heuristic_feats)
+            for k, v in heuristic_feats.items():
+                feature_details[k] = {
+                    "name": k,
+                    "value": v,
+                    "status": FeatureStatus.ESTIMATED,
+                    "evidence_source": "heuristic_baseline",
+                    "explanation": f"Third-party service unavailable; neutral baseline {v} applied",
+                }
             stages_status["external_intel"] = {
                 "status": "heuristic_baseline",
                 "count": len(heuristic_feats),
-                "details": "Documented baseline values applied for retired/commercial services (Alexa, Google PageRank, WHOIS)."
+                "details": "Documented neutral baseline values applied for retired/commercial services.",
             }
             warnings.append(
-                "External intelligence features (Alexa Rank, Google PageRank) use documented baseline defaults "
+                "External intelligence features (Alexa Rank, Google PageRank) use documented neutral baselines "
                 "because original upstream APIs have been retired."
             )
-            coverage = "heuristic"
         else:
+            for k in STAGE_EXTERNAL_INTEL:
+                features[k] = None
+                feature_details[k] = {
+                    "name": k,
+                    "value": None,
+                    "status": FeatureStatus.MISSING,
+                    "evidence_source": "none",
+                    "explanation": "Upstream third-party API is retired or unavailable in strict mode",
+                }
             stages_status["external_intel"] = {
                 "status": "unsupported",
                 "count": 0,
-                "reason": "Upstream third-party APIs (Alexa Rank, Google PageRank) are retired or require commercial feeds."
+                "reason": "Upstream third-party APIs (Alexa Rank, Google PageRank) are retired or require commercial feeds.",
             }
+
+        # Compute metric coverage counts
+        observed_count = sum(
+            1 for d in feature_details.values()
+            if d.get("status") in (FeatureStatus.OBSERVED, FeatureStatus.EXTERNALLY_VERIFIED)
+        )
+        estimated_count = sum(
+            1 for d in feature_details.values()
+            if d.get("status") == FeatureStatus.ESTIMATED
+        )
+        missing_count = sum(
+            1 for d in feature_details.values()
+            if d.get("status") == FeatureStatus.MISSING
+        )
+
+        unsupported_list = [
+            k for k, d in feature_details.items()
+            if d.get("status") == FeatureStatus.MISSING
+        ]
+
+        if missing_count > 0:
             coverage = "incomplete"
+        elif estimated_count > 0:
+            coverage = "heuristic"
+        else:
+            coverage = "complete"
 
-        # Validate complete 30-feature vector if coverage is not incomplete
-        complete_vector = None
-        if coverage != "incomplete":
-            # Ensure every expected feature is present and valid
-            missing_cols = set(EXPECTED_FEATURES) - set(features.keys())
-            if missing_cols:
-                raise ValueError(f"Feature extraction failed to produce required features: {sorted(list(missing_cols))}")
-
-            # Validate range
-            for col in EXPECTED_FEATURES:
-                val = features[col]
-                if col == "Redirect":
-                    if val not in (0, 1):
-                        raise ValueError(f"Feature '{col}' value {val} out of domain [0, 1].")
-                else:
-                    if val not in (-1, 0, 1):
-                        raise ValueError(f"Feature '{col}' value {val} out of domain [-1, 0, 1].")
-
-            # Preserve exact feature ordering matching training
-            complete_vector = {col: features[col] for col in EXPECTED_FEATURES}
+        # Complete feature vector ordering
+        complete_vector = {col: features.get(col) for col in EXPECTED_FEATURES}
 
         return {
             "url": url,
             "feature_coverage": coverage,
-            "extracted_count": len(features),
+            "observed_count": observed_count,
+            "estimated_count": estimated_count,
+            "missing_count": missing_count,
+            "extracted_count": len([v for v in features.values() if v is not None]),
             "total_expected": len(EXPECTED_FEATURES),
-            "features": complete_vector or features,
+            "features": complete_vector,
+            "feature_details": feature_details,
             "stages": stages_status,
-            "unsupported_features": STAGE_EXTERNAL_INTEL if coverage == "incomplete" else [],
+            "unsupported_features": unsupported_list,
             "warnings": warnings,
         }
