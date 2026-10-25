@@ -5,8 +5,8 @@ import os,sys
 import numpy as np
 import dill
 import pickle
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import r2_score, accuracy_score
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.metrics import r2_score, accuracy_score, f1_score
 
 def read_yaml_file(file_path:str) -> dict:
     try:
@@ -55,7 +55,6 @@ def load_object( file_path: str) -> object:
         if not os.path.exists(file_path):
             raise Exception (f"File {file_path} does not exist")
         with open(file_path, 'rb') as file_obj:
-            print(file_obj)
             return pickle.load(file_obj)
         
     except Exception as e:
@@ -72,33 +71,61 @@ def load_numpy_array_data( file_path: str) -> np.array:
     
 
 
-def evaluate_models( X_train,y_train, X_test, y_test, models,param):
+def evaluate_models(X_train, y_train, *args, **kwargs) -> dict:
+    """
+    Evaluates candidate models using stratified cross-validation on the training set only.
+    Hyperparameter tuning and model selection are conducted without accessing test data,
+    preventing test partition data leakage.
+
+    Supports both clean 4-argument call and legacy 6-argument call for backwards compatibility.
+    """
     try:
-        report={}
+        if len(args) >= 4:
+            # Legacy signature: evaluate_models(X_train, y_train, X_test, y_test, models, param)
+            logging.warning("evaluate_models received test partition; ignoring test sets to prevent leakage during CV selection.")
+            models = args[2]
+            param = args[3]
+        elif len(args) == 2:
+            models = args[0]
+            param = args[1]
+        else:
+            models = kwargs.get("models")
+            param = kwargs.get("param", kwargs.get("params", {}))
 
-        for i in range(len(list(models))):
-            model = list(models.values())[i]
-            para=param[list(models.keys())[i]]
+        if models is None or param is None:
+            raise ValueError("evaluate_models requires 'models' and 'param' dictionaries.")
 
-            gs = GridSearchCV(model,para,cv=3)
-            gs.fit(X_train,y_train)
+        cv_strategy = kwargs.get("cv", 3)
+        random_state = kwargs.get("random_state", 42)
+        if isinstance(cv_strategy, int):
+            cv = StratifiedKFold(n_splits=cv_strategy, shuffle=True, random_state=random_state)
+        else:
+            cv = cv_strategy
 
-            model.set_params(**gs.best_params_)
-            model.fit(X_train,y_train)
+        scoring = kwargs.get("scoring", "f1")
+        report = {}
 
-            #model.fit(X_train,y_train) # Train Model
-            y_train_pred = model.predict(X_train) 
+        for model_name, model in models.items():
+            para = param.get(model_name, {})
+            gs = GridSearchCV(
+                estimator=model,
+                param_grid=para,
+                cv=cv,
+                scoring=scoring,
+                refit=True,
+                n_jobs=-1,
+            )
+            gs.fit(X_train, y_train)
 
-            y_test_pred = model.predict( X_test )
+            # Update model dict with the refitted best estimator
+            models[model_name] = gs.best_estimator_
 
-            train_model_score = accuracy_score ( y_train, y_train_pred)
-
-            test_model_score = accuracy_score ( y_test, y_test_pred)
-
-            report[list(models.keys())[i]] = test_model_score
+            # Record the cross-validation score for selection
+            best_cv_score = float(gs.best_score_)
+            report[model_name] = best_cv_score
+            logging.info(f"Model: {model_name} | Best CV {scoring}: {best_cv_score:.4f} | Best Params: {gs.best_params_}")
 
         return report
-    
-    except Exception as e:
-        raise NetworkSecurityException(e,sys) 
 
+    except Exception as e:
+        raise NetworkSecurityException(e, sys)

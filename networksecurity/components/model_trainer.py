@@ -59,6 +59,10 @@ class ModelTrainer:
                 mlflow.log_metric(f"{dataset_type}_f1_score", f1_score)
                 mlflow.log_metric(f"{dataset_type}_precision_score", precision_score)
                 mlflow.log_metric(f"{dataset_type}_recall_score", recall_score)
+                if hasattr(classificationmetric, "accuracy_score") and classificationmetric.accuracy_score is not None:
+                    mlflow.log_metric(f"{dataset_type}_accuracy", classificationmetric.accuracy_score)
+                if hasattr(classificationmetric, "roc_auc_score") and classificationmetric.roc_auc_score is not None:
+                    mlflow.log_metric(f"{dataset_type}_roc_auc", classificationmetric.roc_auc_score)
 
                 # Standard metric names for backwards compatibility
                 mlflow.log_metric("f1_score", f1_score)
@@ -77,82 +81,91 @@ class ModelTrainer:
 
 
         
-    def train_model(self,X_train,y_train,x_test,y_test):
+    def train_model(self, X_train, y_train, x_test, y_test):
         models = {
-                "Random Forest": RandomForestClassifier(verbose=1),
-                "Decision Tree": DecisionTreeClassifier(),
-                "Gradient Boosting": GradientBoostingClassifier(verbose=1),
-                "Logistic Regression": LogisticRegression(verbose=1),
-                "AdaBoost": AdaBoostClassifier(),
-            }
-        params={
-            "Decision Tree": {
-                'criterion':['gini', 'entropy', 'log_loss'],
-                # 'splitter':['best','random'],
-                # 'max_features':['sqrt','log2'],
-            },
-            "Random Forest":{
-                # 'criterion':['gini', 'entropy', 'log_loss'],
-                
-                # 'max_features':['sqrt','log2',None],
-                'n_estimators': [8,16,32,128,256]
-            },
-            "Gradient Boosting":{
-                # 'loss':['log_loss', 'exponential'],
-                'learning_rate':[.1,.01,.05,.001],
-                'subsample':[0.6,0.7,0.75,0.85,0.9],
-                # 'criterion':['squared_error', 'friedman_mse'],
-                # 'max_features':['auto','sqrt','log2'],
-                'n_estimators': [8,16,32,64,128,256]
-            },
-            "Logistic Regression":{},
-            "AdaBoost":{
-                'learning_rate':[.1,.01,.001],
-                'n_estimators': [8,16,32,64,128,256]
-            }
-            
+            "Random Forest": RandomForestClassifier(random_state=42),
+            "Decision Tree": DecisionTreeClassifier(random_state=42),
+            "Gradient Boosting": GradientBoostingClassifier(random_state=42),
+            "Logistic Regression": LogisticRegression(random_state=42, max_iter=500),
+            "AdaBoost": AdaBoostClassifier(random_state=42),
         }
-        model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=x_test,y_test=y_test,
-                                          models=models,param=params)
-        
-        ## To get best model score from dict
+        params = {
+            "Decision Tree": {
+                'criterion': ['gini', 'entropy'],
+                'max_depth': [None, 10, 20],
+            },
+            "Random Forest": {
+                'n_estimators': [16, 32, 64, 128],
+            },
+            "Gradient Boosting": {
+                'learning_rate': [0.05, 0.1],
+                'n_estimators': [16, 32, 64],
+                'subsample': [0.8, 1.0],
+            },
+            "Logistic Regression": {
+                'C': [0.1, 1.0, 10.0],
+            },
+            "AdaBoost": {
+                'learning_rate': [0.1, 1.0],
+                'n_estimators': [16, 32, 64],
+            },
+        }
+
+        # Model selection uses stratified CV on training set ONLY.
+        # Test partition is kept completely untouched to prevent data leakage.
+        model_report: dict = evaluate_models(
+            X_train=X_train,
+            y_train=y_train,
+            models=models,
+            param=params,
+            cv=3,
+            scoring="f1",
+            random_state=42,
+        )
+
+        ## Get best model score from CV report
         best_model_score = max(sorted(model_report.values()))
 
-        ## To get best model name from dict
-
+        ## Get best model name from dict
         best_model_name = list(model_report.keys())[
             list(model_report.values()).index(best_model_score)
         ]
         best_model = models[best_model_name]
-        y_train_pred=best_model.predict(X_train)
+        logging.info(f"Selected best model via training CV: {best_model_name} with CV F1: {best_model_score:.4f}")
 
-        classification_train_metric=get_classification_score(y_true=y_train,y_pred=y_train_pred)
-        
-        ## Track the experiements with mlflow
-        self.track_mlflow(best_model,classification_train_metric,dataset_type="train")
+        # Check threshold
+        if best_model_score < self.model_trainer_config.expected_accuracy:
+            raise ValueError(f"Best model score {best_model_score:.4f} is lower than expected score {self.model_trainer_config.expected_accuracy}")
 
+        # Evaluate on training data
+        y_train_pred = best_model.predict(X_train)
+        y_train_prob = best_model.predict_proba(X_train) if hasattr(best_model, "predict_proba") else None
+        classification_train_metric = get_classification_score(y_true=y_train, y_pred=y_train_pred, y_prob=y_train_prob)
+        self.track_mlflow(best_model, classification_train_metric, dataset_type="train")
 
-        y_test_pred=best_model.predict(x_test)
-        classification_test_metric=get_classification_score(y_true=y_test,y_pred=y_test_pred)
-
-        self.track_mlflow(best_model,classification_test_metric,dataset_type="test")
+        # Evaluate ONCE on untouched held-out test data for final evaluation
+        y_test_pred = best_model.predict(x_test)
+        y_test_prob = best_model.predict_proba(x_test) if hasattr(best_model, "predict_proba") else None
+        classification_test_metric = get_classification_score(y_true=y_test, y_pred=y_test_pred, y_prob=y_test_prob)
+        self.track_mlflow(best_model, classification_test_metric, dataset_type="test")
 
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
-            
-        model_dir_path = os.path.dirname(self.model_trainer_config.trained_model_file_path)
-        os.makedirs(model_dir_path,exist_ok=True)
 
-        Network_Model=NetworkModel(preprocessor=preprocessor,model=best_model)
-        save_object(self.model_trainer_config.trained_model_file_path,obj=Network_Model)
-        #model pusher
-        save_object("final_model/model.pkl",Network_Model)
-        
+        model_dir_path = os.path.dirname(self.model_trainer_config.trained_model_file_path)
+        os.makedirs(model_dir_path, exist_ok=True)
+
+        Network_Model = NetworkModel(preprocessor=preprocessor, model=best_model)
+        save_object(self.model_trainer_config.trained_model_file_path, obj=Network_Model)
+
+        # Model pusher path
+        save_object("final_model/model.pkl", Network_Model)
 
         ## Model Trainer Artifact
-        model_trainer_artifact=ModelTrainerArtifact(trained_model_file_path=self.model_trainer_config.trained_model_file_path,
-                             train_metric_artifact=classification_train_metric,
-                             test_metric_artifact=classification_test_metric
-                             )
+        model_trainer_artifact = ModelTrainerArtifact(
+            trained_model_file_path=self.model_trainer_config.trained_model_file_path,
+            train_metric_artifact=classification_train_metric,
+            test_metric_artifact=classification_test_metric,
+        )
         logging.info(f"Model trainer artifact: {model_trainer_artifact}")
         return model_trainer_artifact
 
