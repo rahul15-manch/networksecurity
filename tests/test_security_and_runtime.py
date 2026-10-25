@@ -53,11 +53,16 @@ class TestSecurityConfigurations(unittest.TestCase):
 
     def test_model_trainer_import_does_not_inject_hardcoded_secrets(self):
         """Verify that importing model_trainer does not set secret environment variables."""
-        self.assertNotIn(
-            "MLFLOW_TRACKING_PASSWORD",
-            os.environ,
-            "MLFLOW_TRACKING_PASSWORD should not be pre-set in os.environ by import",
-        )
+        import importlib
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("dotenv.load_dotenv"):
+                import networksecurity.components.model_trainer as mt
+                importlib.reload(mt)
+                self.assertNotIn(
+                    "MLFLOW_TRACKING_PASSWORD",
+                    os.environ,
+                    "MLFLOW_TRACKING_PASSWORD should not be pre-set in os.environ by import",
+                )
 
     def test_data_ingestion_fails_fast_when_mongo_url_missing(self):
         """Verify data ingestion does not silently connect to localhost when MONGO_DB_URL is missing."""
